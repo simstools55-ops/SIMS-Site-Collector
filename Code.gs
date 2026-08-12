@@ -1,4 +1,4 @@
-const SDSC_VERSION = '0.1.0';
+const SDSC_VERSION = '0.1.1';
 
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -81,6 +81,7 @@ function sdscResumeCollection() {
       else if (run.step === 4) sdscCollectPageQuery_(run, deadline);
       else if (run.step === 5) sdscFinalizeEvidence_(run);
       run.updatedAt = new Date().toISOString();
+      run.transientFailureCount = 0;
       sdscSaveRun_(run);
       if (run.status === 'PAUSED_AUTO_RESUME') break;
     }
@@ -88,9 +89,16 @@ function sdscResumeCollection() {
       sdscPauseAndSchedule_(run, 'soft execution limit reached');
     }
   } catch (e) {
-    run.status = 'ERROR';
     run.errors = run.errors || [];
     run.errors.push({ at: new Date().toISOString(), message: String(e && e.stack ? e.stack : e) });
+    if (sdscIsTransientSpreadsheetError_(e)) {
+      run.transientFailureCount = (run.transientFailureCount || 0) + 1;
+      if (run.transientFailureCount <= (SDSC_CONFIG.transientRunMaxRetries || 6)) {
+        sdscPauseAndSchedule_(run, `transient spreadsheet error; auto retry ${run.transientFailureCount}`);
+        return;
+      }
+    }
+    run.status = 'ERROR';
     sdscSaveRun_(run);
     throw e;
   }
