@@ -1,23 +1,31 @@
 const SDSC_CONFIG = Object.freeze({
   apiBase: 'https://www.googleapis.com/webmasters/v3',
   searchType: 'web',
-  periodDays: 180,
-  rowLimit: 25000,
+  standardPeriodDays: 120,
+  detailPeriodDays: 180,
+  rowLimit: 5000,
+  topQueriesPerPage: 20,
+  maxBatchesPerInvocation: 16,
+  deadlineGuardMs: 30000,
   maxRetries: 5,
-  sheetWriteMaxRetries: 5,
-  sheetWriteRetryBaseMs: 1000,
-  transientRunMaxRetries: 6,
   softExecutionMs: 4.5 * 60 * 1000,
   resumeDelayMinutes: 2,
-  configPropertyKey: 'SDSC_CONFIG_V1',
-  runPropertyKey: 'SDSC_RUN_V1',
+  configPropertyKey: 'SDSC_CONFIG_V2',
+  runPropertyKey: 'SDSC_RUN_V2',
   outputFolderName: 'SIMS-Doctor-Site-Collector',
   sheets: {
+    status: '_SDSC_STATUS',
     siteDaily: '_SDSC_SITE_DAILY',
-    pageDaily: '_SDSC_PAGE_DAILY',
-    queryDaily: '_SDSC_QUERY_DAILY',
-    pageQuery: '_SDSC_PAGE_QUERY'
-  }
+    pagePeriod: '_SDSC_PAGE_PERIOD',
+    pageWeekly: '_SDSC_PAGE_WEEKLY',
+    queryPeriod: '_SDSC_QUERY_PERIOD',
+    pageQueryTop: '_SDSC_PAGE_QUERY_TOP'
+  },
+  legacyRawSheets: [
+    '_SDSC_PAGE_DAILY',
+    '_SDSC_QUERY_DAILY',
+    '_SDSC_PAGE_QUERY'
+  ]
 });
 
 function sdscGetConfig_() {
@@ -37,7 +45,7 @@ function sdscSaveRun_(run) {
 function sdscResolvePeriod_(days) {
   const tz = Session.getScriptTimeZone() || 'Asia/Tokyo';
   const end = new Date();
-  end.setDate(end.getDate() - 3); // Search Console final data lag guard
+  end.setDate(end.getDate() - 3);
   const start = new Date(end);
   start.setDate(start.getDate() - (days - 1));
   return {

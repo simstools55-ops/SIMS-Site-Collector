@@ -2,7 +2,6 @@ function sdscGetAccessibleSites_() {
   const res = sdscFetchJson_(`${SDSC_CONFIG.apiBase}/sites`, { method: 'get' });
   return (res.siteEntry || []).filter(x => x.siteUrl && x.permissionLevel !== 'siteUnverifiedUser');
 }
-
 function sdscSearchAnalyticsQuery_(siteUrl, body) {
   const encoded = encodeURIComponent(siteUrl);
   return sdscFetchJson_(`${SDSC_CONFIG.apiBase}/sites/${encoded}/searchAnalytics/query`, {
@@ -11,7 +10,6 @@ function sdscSearchAnalyticsQuery_(siteUrl, body) {
     payload: JSON.stringify(body)
   });
 }
-
 function sdscFetchJson_(url, options) {
   const opts = Object.assign({}, options || {});
   opts.muteHttpExceptions = true;

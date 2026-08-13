@@ -9,7 +9,6 @@ function sdscPauseAndSchedule_(run, note) {
     .after(SDSC_CONFIG.resumeDelayMinutes * 60 * 1000)
     .create();
 }
-
 function sdscClearResumeTrigger_() {
   ScriptApp.getProjectTriggers().forEach(t => {
     if (t.getHandlerFunction() === 'sdscResumeCollection') ScriptApp.deleteTrigger(t);
