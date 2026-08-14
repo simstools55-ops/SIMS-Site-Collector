@@ -1,4 +1,4 @@
-const SDSC_VERSION='0.2.0-RC5';
+const SDSC_VERSION='0.2.0-RC6';
 
 function onOpen(){
   SpreadsheetApp.getUi()
@@ -29,15 +29,54 @@ function sdscShowSetupDialog(){
   if(!Number.isInteger(idx)||idx<0||idx>=props.length){
     ui.alert('入力が正しくありません。');return;
   }
+
+  let currentFolderText=`(既定: ${SDSC_CONFIG.outputFolderName})`;
+  if(current.outputFolderId){
+    try{
+      const f=DriveApp.getFolderById(sdscResolveOutputFolderId_(current.outputFolderId));
+      currentFolderText=`${f.getName()}\n${f.getUrl()}`;
+    }catch(e){
+      currentFolderText='(設定済みフォルダーを開けません。再設定してください)';
+    }
+  }
+  const folderPrompt=ui.prompt(
+    'Evidence Package 保存先',
+    `Google Driveの保存先フォルダーURLまたはフォルダーIDを入力してください。\n空欄なら既定フォルダー「${SDSC_CONFIG.outputFolderName}」を使用します。\n\n現在の保存先:\n${currentFolderText}`,
+    ui.ButtonSet.OK_CANCEL
+  );
+  if(folderPrompt.getSelectedButton()!==ui.Button.OK)return;
+
+  const folderInput=folderPrompt.getResponseText().trim();
+  let folderId='';
+  let folderName=SDSC_CONFIG.outputFolderName;
+  let folderUrl='';
+  if(folderInput){
+    folderId=sdscResolveOutputFolderId_(folderInput);
+    try{
+      const folder=DriveApp.getFolderById(folderId);
+      folderName=folder.getName();
+      folderUrl=folder.getUrl();
+    }catch(e){
+      ui.alert('保存先フォルダーを開けませんでした。\nGoogle DriveフォルダーURLまたはフォルダーIDを確認してください。');
+      return;
+    }
+  }
+
   sdscSaveConfig_({
     siteUrl:props[idx].siteUrl,
     permissionLevel:props[idx].permissionLevel,
     searchType:'web',
-    timezone:Session.getScriptTimeZone()||'Asia/Tokyo'
+    timezone:Session.getScriptTimeZone()||'Asia/Tokyo',
+    outputFolderId:folderId
   });
-  ui.alert(`設定しました。\n${props[idx].siteUrl}\n標準診断期間: 120日`);
-}
 
+  if(!folderInput){
+    const info=sdscGetOutputFolderInfo_({outputFolderId:''});
+    folderName=info.name;
+    folderUrl=info.url;
+  }
+  ui.alert(`設定しました。\n\nSite: ${props[idx].siteUrl}\n標準診断期間: 120日\nEvidence保存先: ${folderName}\n${folderUrl}`);
+}
 function sdscStartStandardCollection(){sdscStartCollection_(SDSC_CONFIG.standardPeriodDays);}
 function sdscStartDetailedCollection(){sdscStartCollection_(SDSC_CONFIG.detailPeriodDays);}
 
@@ -150,6 +189,9 @@ function sdscRepairStep5AndRebuild(){
   run.rows.pageQueryTop=0;
   run.outputFileId=null;
   run.outputFileUrl=null;
+  run.outputFolderId=null;
+  run.outputFolderName=null;
+  run.outputFolderUrl=null;
   run.completedAt=null;
   run.errors=[];
   run.progressText='Step 5修復を開始します';
@@ -168,10 +210,18 @@ function sdscShowStatus(){
     `Site: ${sdscGetConfig_().siteUrl||''}\nRun: ${run.runId}\nStatus: ${run.status}\n`+
     `Step: ${run.status==='COMPLETED' ? '6/6' : `${Math.min(run.step,6)}/6`}\n期間: ${run.period.days}日\n\n${run.progressText||''}\n\n`+
     `Output: ${run.outputFileUrl||'(未生成)'}\n`+
+    `保存先: ${run.outputFolderUrl||sdscSafeConfiguredOutputFolderUrl_()}\n`+
     `Last error: ${(run.errors&&run.errors.length)?run.errors[run.errors.length-1].message:'(なし)'}`
   );
 }
 
+function sdscSafeConfiguredOutputFolderUrl_(){
+  try{
+    return sdscGetOutputFolderInfo_(sdscGetConfig_()).url;
+  }catch(e){
+    return '(保存先を確認できません)';
+  }
+}
 function sdscResetState(){
   const ui=SpreadsheetApp.getUi();
   const r=ui.alert('Collector状態をリセットしますか？','途中状態だけを削除します。',ui.ButtonSet.YES_NO);

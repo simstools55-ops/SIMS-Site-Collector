@@ -1,11 +1,11 @@
-# SIMS Doctor Site Collector v0.2.0-RC2
+# SIMS Doctor Site Collector v0.2.0-RC6
 
 Large-Site Compact Evidence architecture.
 
 ## Main change
 v0.1.x stored pageDaily/queryDaily raw rows in Google Sheets. Large sites can exceed the workbook 10,000,000-cell limit.
 
-v0.2.0-RC2 does not store those huge raw datasets. It collects:
+v0.2.0-RC6 does not store those huge raw datasets. It collects:
 - site_daily.csv
 - page_summary.csv
 - page_weekly.csv
@@ -15,8 +15,12 @@ v0.2.0-RC2 does not store those huge raw datasets. It collects:
 Standard diagnosis is 120 days. Detailed collection remains available at 180 days.
 
 ## Important migration note
-Do not resume a v0.1.x run with v0.2.0-RC2.
+Do not resume a v0.1.x run with v0.2.0-RC6.
 Start a new run. At start, the tool asks permission to delete legacy raw evidence sheets so the workbook can recover cell capacity.
 
 ## RC2 optimization
 Step 5 now normalizes observed GSC URLs and narrows page-level query collection using sitemap/robots.txt discovery. If sitemap discovery is not usable, a conservative Hatena/WordPress article-URL heuristic is used.
+
+
+## RC6 Evidence storage UX
+Setup now allows an optional Google Drive folder URL or folder ID for Evidence Package output. Leave it blank to keep using the default `SIMS-Doctor-Site-Collector` folder. The resolved destination is shown in Setup confirmation and Show Status.

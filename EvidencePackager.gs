@@ -63,7 +63,7 @@ function sdscFinalizeEvidence_(run) {
 
   const manifest={
     format:'SIMS_DOCTOR_SITE_EVIDENCE_PACKAGE_V2',
-    packageVersion:'2.0.0-rc5',
+    packageVersion:'2.0.0-rc6',
     collectorVersion:SDSC_VERSION,
     generatedAt:new Date().toISOString(),
     timezone:config.timezone||'Asia/Tokyo',
@@ -87,14 +87,17 @@ function sdscFinalizeEvidence_(run) {
   files.push(Utilities.newBlob(sdscReadmeText_(),'text/plain','README-FIRST.md'));
 
   const zipName=`SIMS-Doctor-Site-Evidence-${Utilities.formatDate(new Date(),config.timezone||'Asia/Tokyo','yyyyMMdd')}.zip`;
-  const folder=sdscGetOrCreateFolder_(SDSC_CONFIG.outputFolderName);
-  const file=folder.createFile(Utilities.zip(files,zipName));
+  const folderInfo=sdscGetOutputFolderInfo_(config);
+  const file=folderInfo.folder.createFile(Utilities.zip(files,zipName));
   run.outputFileId=file.getId();
   run.outputFileUrl=file.getUrl();
+  run.outputFolderId=folderInfo.id;
+  run.outputFolderName=folderInfo.name;
+  run.outputFolderUrl=folderInfo.url;
   run.status='COMPLETED';
   run.step=7;
   run.completedAt=new Date().toISOString();
-  run.progressText='Evidence Package生成完了';
+  run.progressText=`Evidence Package生成完了\n保存先: ${folderInfo.name}\n${folderInfo.url}`;
   run.errors=[];
   sdscSaveRun_(run);
   sdscWriteStatus_(run);

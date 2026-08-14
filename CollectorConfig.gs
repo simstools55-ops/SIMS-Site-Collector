@@ -42,6 +42,27 @@ function sdscGetRun_() {
 function sdscSaveRun_(run) {
   PropertiesService.getDocumentProperties().setProperty(SDSC_CONFIG.runPropertyKey, JSON.stringify(run));
 }
+
+function sdscResolveOutputFolderId_(input) {
+  const value=String(input||'').trim();
+  if(!value)return '';
+  const m=value.match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : value;
+}
+function sdscGetOutputFolderInfo_(config) {
+  const folderId=sdscResolveOutputFolderId_(config&&config.outputFolderId);
+  if(folderId){
+    try{
+      const folder=DriveApp.getFolderById(folderId);
+      return {folder:folder,id:folder.getId(),name:folder.getName(),url:folder.getUrl(),isDefault:false};
+    }catch(e){
+      throw new Error('設定済みのEvidence保存先フォルダーを開けません。Setup / Select Site で保存先を再設定してください。');
+    }
+  }
+  const folder=sdscGetOrCreateFolder_(SDSC_CONFIG.outputFolderName);
+  return {folder:folder,id:folder.getId(),name:folder.getName(),url:folder.getUrl(),isDefault:true};
+}
+
 function sdscResolvePeriod_(days) {
   const tz = Session.getScriptTimeZone() || 'Asia/Tokyo';
   const end = new Date();

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0-RC6 - Evidence Storage UX
+- Added optional Google Drive Evidence output folder configuration during Setup.
+- Accepts either a Google Drive folder URL or folder ID.
+- Keeps backward compatibility: blank/unconfigured uses the existing `SIMS-Doctor-Site-Collector` folder.
+- Shows the resolved Evidence destination folder in Setup confirmation, status, and completion progress.
+- Preserves RC5 Hatena URL Repair and Evidence collection behavior.
+
 ## 0.2.0-RC5 - Hatena URL Repair
 - Replaced browser-style URL parsing with Apps Script-safe string/regex URL parsing.
 - Verified tonbos55 RC4 Evidence contains 3,191 raw /entry/ rows collapsing to 428 normalized article URLs.
