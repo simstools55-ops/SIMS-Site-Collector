@@ -41,7 +41,7 @@ function sdscShowSetupDialog(){
   }
   const folderPrompt=ui.prompt(
     'Evidence Package 保存先',
-    `Google Driveの保存先フォルダーURLまたはフォルダーIDを入力してください。\n空欄なら既定フォルダー「${SDSC_CONFIG.outputFolderName}」を使用します。\n\n現在の保存先:\n${currentFolderText}`,
+    `Google Driveの保存先フォルダーURLまたはフォルダーIDを入力してください。\nWindowsのフォルダーパス（C:\\～）は使用できません。ブラウザ版Google Driveで保存先フォルダーを開き、そのURLを貼り付けてください。\n空欄なら既定フォルダー「${SDSC_CONFIG.outputFolderName}」を使用します。\n\n現在の保存先:\n${currentFolderText}`,
     ui.ButtonSet.OK_CANCEL
   );
   if(folderPrompt.getSelectedButton()!==ui.Button.OK)return;
@@ -57,7 +57,7 @@ function sdscShowSetupDialog(){
       folderName=folder.getName();
       folderUrl=folder.getUrl();
     }catch(e){
-      ui.alert('保存先フォルダーを開けませんでした。\nGoogle DriveフォルダーURLまたはフォルダーIDを確認してください。');
+      ui.alert('保存先フォルダーを開けませんでした。\nブラウザ版Google DriveのフォルダーURLまたはフォルダーIDを確認してください。\nWindowsのフォルダーパス（C:\\～）は使用できません。');
       return;
     }
   }

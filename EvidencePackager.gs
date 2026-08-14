@@ -97,7 +97,7 @@ function sdscFinalizeEvidence_(run) {
   run.status='COMPLETED';
   run.step=7;
   run.completedAt=new Date().toISOString();
-  run.progressText=`Evidence Package生成完了\n保存先: ${folderInfo.name}\n${folderInfo.url}`;
+  run.progressText=`Evidence Package生成完了\n保存先: ${folderInfo.name}`;
   run.errors=[];
   sdscSaveRun_(run);
   sdscWriteStatus_(run);
