@@ -9,19 +9,27 @@
 // Core / Menu / Runner (source: Code.gs)
 // ============================================================================
 
-const SDSC_VERSION='0.2.0-RC7';
+const SDSC_VERSION='0.2.0-RC8';
 
 function onOpen(){
-  SpreadsheetApp.getUi()
-    .createMenu('SIMS Doctor Site Collector')
-    .addItem('1. Setup / Select Site','sdscShowSetupDialog')
-    .addItem('2. Start Standard 120-day Collection','sdscStartStandardCollection')
-    .addItem('3. Start Detailed 180-day Collection','sdscStartDetailedCollection')
-    .addItem('4. Resume Collection','sdscResumeCollection')
-    .addItem('5. Show Status','sdscShowStatus')
-    .addItem('6. Repair Step 5 / Rebuild Evidence','sdscRepairStep5AndRebuild')
+  sdscTidyUserSheets_();
+  const ui=SpreadsheetApp.getUi();
+  ui.createMenu('SIMS Site Collector')
+    .addItem('1. 収集するサイトを選ぶ','sdscShowSetupDialog')
+    .addItem('2. 通常の診断データを収集（120日）','sdscStartStandardCollection')
+    .addItem('3. 収集状況を確認','sdscShowStatus')
     .addSeparator()
-    .addItem('Reset Collector State','sdscResetState')
+    .addSubMenu(
+      ui.createMenu('追加の操作')
+        .addItem('詳しく収集する（180日）','sdscStartDetailedCollection')
+        .addItem('中断した収集を再開','sdscResumeCollection')
+    )
+    .addSubMenu(
+      ui.createMenu('保守・トラブル対応')
+        .addItem('Step 5を修復してEvidenceを再生成','sdscRepairStep5AndRebuild')
+        .addItem('収集中の状態をリセット','sdscResetState')
+        .addItem('内部シートを再整理','sdscTidyUserSheets')
+    )
     .addToUi();
 }
 
@@ -32,7 +40,7 @@ function sdscShowSetupDialog(){
   const ui=SpreadsheetApp.getUi();
   const prompt=ui.prompt(
     `SIMS Doctor Site Collector v${SDSC_VERSION}`,
-    `Search Console property numberを入力してください。\n\n${items}\n\n現在: ${current.siteUrl||'(未設定)'}`,
+    `収集するサイトの番号を入力してください。\n\n${items}\n\n現在: ${current.siteUrl||'(未設定)'}`,
     ui.ButtonSet.OK_CANCEL
   );
   if(prompt.getSelectedButton()!==ui.Button.OK)return;
@@ -93,7 +101,7 @@ function sdscStartDetailedCollection(){sdscStartCollection_(SDSC_CONFIG.detailPe
 
 function sdscStartCollection_(days){
   const config=sdscGetConfig_();
-  if(!config.siteUrl)throw new Error('先に Setup / Select Site を実行してください。');
+  if(!config.siteUrl)throw new Error('先に「1. 収集するサイトを選ぶ」を実行してください。');
   if(!sdscDeleteLegacyRawSheetsWithConfirmation_())return;
   sdscClearResumeTrigger_();
   const run={
@@ -161,7 +169,7 @@ function sdscResumeCollection(){
     run.errors=run.errors||[];
     run.errors.push({at:new Date().toISOString(),message:String(e&&e.stack?e.stack:e)});
     run.status='ERROR';
-    run.progressText='エラーが発生しました。Show Statusで内容を確認してください。';
+    run.progressText='エラーが発生しました。「3. 収集状況を確認」で内容を確認してください。';
     sdscSaveRun_(run);
     sdscWriteStatus_(run);
     throw e;
@@ -304,7 +312,7 @@ function sdscGetOutputFolderInfo_(config) {
       const folder=DriveApp.getFolderById(folderId);
       return {folder:folder,id:folder.getId(),name:folder.getName(),url:folder.getUrl(),isDefault:false};
     }catch(e){
-      throw new Error('設定済みのEvidence保存先フォルダーを開けません。Setup / Select Site で保存先を再設定してください。');
+      throw new Error('設定済みのEvidence保存先フォルダーを開けません。「1. 収集するサイトを選ぶ」で保存先を再設定してください。');
     }
   }
   const folder=sdscGetOrCreateFolder_(SDSC_CONFIG.outputFolderName);
@@ -580,6 +588,62 @@ function sdscSitemapSeeds_(siteUrl) {
 // Storage (source: Storage.gs)
 // ============================================================================
 
+function sdscTidyUserSheets(){
+  sdscTidyUserSheets_();
+  SpreadsheetApp.getUi().alert(
+    'シートを整理しました。\n\n利用者が通常確認するのは「_SDSC_STATUS」だけです。\n収集用の内部シートは非表示にしました。'
+  );
+}
+
+function sdscTidyUserSheets_(){
+  const ss=SpreadsheetApp.getActive();
+  const internalNames=[
+    SDSC_CONFIG.sheets.siteDaily,
+    SDSC_CONFIG.sheets.pagePeriod,
+    SDSC_CONFIG.sheets.pageWeekly,
+    SDSC_CONFIG.sheets.queryPeriod,
+    SDSC_CONFIG.sheets.pageQueryTop
+  ];
+
+  internalNames.forEach(name=>{
+    const sh=ss.getSheetByName(name);
+    if(sh){
+      try{sh.hideSheet();}catch(e){}
+    }
+  });
+
+  const status=ss.getSheetByName(SDSC_CONFIG.sheets.status);
+  if(status){
+    try{status.showSheet();}catch(e){}
+  }
+
+  // A newly-created spreadsheet contains a blank "シート1" / "Sheet1".
+  // Delete it only when it is still effectively empty and another sheet exists.
+  ['シート1','Sheet1'].forEach(name=>{
+    const sh=ss.getSheetByName(name);
+    if(!sh||ss.getSheets().length<=1)return;
+    if(sdscIsEffectivelyBlankSheet_(sh)){
+      try{ss.deleteSheet(sh);}catch(e){}
+    }
+  });
+}
+
+function sdscIsEffectivelyBlankSheet_(sh){
+  if(!sh)return false;
+  try{
+    if(sh.getLastRow()===0||sh.getLastColumn()===0)return true;
+    const values=sh.getDataRange().getDisplayValues();
+    for(let r=0;r<values.length;r++){
+      for(let c=0;c<values[r].length;c++){
+        if(String(values[r][c]||'').trim()!=='')return false;
+      }
+    }
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+
 function sdscPrepareCompactSheets_() {
   const ss = SpreadsheetApp.getActive();
   const defs = [
@@ -599,6 +663,7 @@ function sdscPrepareCompactSheets_() {
       try { sh.hideSheet(); } catch (e) {}
     }
   });
+  sdscTidyUserSheets_();
 }
 function sdscAppendRows_(sheetName, rows) {
   if (!rows || !rows.length) return;

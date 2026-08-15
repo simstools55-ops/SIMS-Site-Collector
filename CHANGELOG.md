@@ -1,3 +1,11 @@
+# v0.2.0-RC8
+
+- Reorganized the menu around normal user workflow.
+- Moved detailed/recovery actions into submenus.
+- Hide internal collection sheets from normal users.
+- Automatically remove only an empty default Sheet1/シート1.
+- No collection/evidence logic changes.
+
 # Changelog
 
 ## 0.2.0-RC7 - Single Code Distribution
