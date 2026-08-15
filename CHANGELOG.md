@@ -1,3 +1,10 @@
+# v0.2.0-RC9.1
+
+- Evidence Package filename now always includes a friendly site name and collection date/time.
+- Added site-name input when selecting a site.
+- Default filename is regenerated on every collection and can still be edited before saving.
+- Example: `SIMS-Evidence-ガジェット探検記-20260815-1449.zip`.
+
 # v0.2.0-RC9
 
 - Renamed the visible status sheet to `収集状況` and localized user-facing fields.

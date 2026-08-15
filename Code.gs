@@ -9,7 +9,7 @@
 // Core / Menu / Runner (source: Code.gs)
 // ============================================================================
 
-const SDSC_VERSION='0.2.0-RC9';
+const SDSC_VERSION='0.2.0-RC9.1';
 
 function onOpen(){
   sdscTidyUserSheets_();
@@ -49,8 +49,19 @@ function sdscShowSetupDialog(){
     ui.alert('入力が正しくありません。');return;
   }
 
+  const selectedSiteUrl=props[idx].siteUrl;
+  const suggestedSiteName=sdscSuggestedSiteName_(selectedSiteUrl);
+  const namePrompt=ui.prompt(
+    'サイト名',
+    `Evidence Packageのファイル名に使うサイト名を入力してください。\n\n例: ガジェット探検記\n\n空欄の場合は「${suggestedSiteName}」を使用します。`,
+    ui.ButtonSet.OK_CANCEL
+  );
+  if(namePrompt.getSelectedButton()!==ui.Button.OK)return;
+  const siteName=namePrompt.getResponseText().trim()||suggestedSiteName;
+
   sdscSaveConfig_({
-    siteUrl:props[idx].siteUrl,
+    siteUrl:selectedSiteUrl,
+    siteName:siteName,
     permissionLevel:props[idx].permissionLevel,
     searchType:'web',
     timezone:Session.getScriptTimeZone()||'Asia/Tokyo',
@@ -58,7 +69,7 @@ function sdscShowSetupDialog(){
     outputFileName:current.outputFileName||''
   });
 
-  ui.alert(`設定しました。\n\n対象サイト: ${props[idx].siteUrl}\n標準収集期間: 120日\n\n保存先とファイル名は、収集を開始するときに選べます。`);
+  ui.alert(`設定しました。\n\nサイト名: ${siteName}\n対象サイト: ${selectedSiteUrl}\n標準収集期間: 120日\n\nEvidence Packageは「サイト名＋収集日時」が分かる名前で自動生成されます。`);
 }
 function sdscPrepareStandardCollection(){sdscShowSaveAndStartDialog_(SDSC_CONFIG.standardPeriodDays);}
 function sdscPrepareDetailedCollection(){sdscShowSaveAndStartDialog_(SDSC_CONFIG.detailPeriodDays);}
@@ -68,27 +79,41 @@ function sdscStartDetailedCollection(){sdscStartCollection_(SDSC_CONFIG.detailPe
 function sdscShowSaveAndStartDialog_(days){
   const config=sdscGetConfig_();
   if(!config.siteUrl)throw new Error('先に「1. 収集するサイトを選ぶ」を実行してください。');
-  const defaultName=sdscDefaultEvidenceFileName_(config.siteUrl, config.timezone||'Asia/Tokyo');
+  const defaultName=sdscDefaultEvidenceFileName_(config.siteName, config.siteUrl, config.timezone||'Asia/Tokyo');
   const initialFolder=sdscPickerFolderInfo_(config.outputFolderId||'');
   const title=days===SDSC_CONFIG.detailPeriodDays?'詳しく収集する（180日）':'通常の診断データを収集（120日）';
   const html=HtmlService.createHtmlOutput(sdscSaveDialogHtml_({
     days:days,
     title:title,
     siteUrl:config.siteUrl,
-    defaultFileName:config.outputFileName||defaultName,
+    siteName:config.siteName||sdscSuggestedSiteName_(config.siteUrl),
+    defaultFileName:defaultName,
     initialFolderId:initialFolder.id,
     initialFolderName:initialFolder.name
   })).setWidth(620).setHeight(520);
   SpreadsheetApp.getUi().showModalDialog(html,'Evidence Package の保存');
 }
 
-function sdscDefaultEvidenceFileName_(siteUrl,tz){
-  let site=String(siteUrl||'site')
+function sdscSuggestedSiteName_(siteUrl){
+  return String(siteUrl||'site')
     .replace(/^sc-domain:/i,'')
     .replace(/^https?:\/\//i,'')
     .replace(/\/.*$/,'')
-    .replace(/[^a-zA-Z0-9._-]+/g,'-')
-    .replace(/^-+|-+$/g,'')||'site';
+    .replace(/^www\./i,'')
+    .trim()||'site';
+}
+
+function sdscSafeFilePart_(value,fallback){
+  let v=String(value||'').trim()
+    .replace(/[\\/:*?"<>|]/g,'-')
+    .replace(/\s+/g,'-')
+    .replace(/-+/g,'-')
+    .replace(/^-+|-+$/g,'');
+  return v||fallback||'site';
+}
+
+function sdscDefaultEvidenceFileName_(siteName,siteUrl,tz){
+  const site=sdscSafeFilePart_(siteName||sdscSuggestedSiteName_(siteUrl),'site');
   const stamp=Utilities.formatDate(new Date(),tz||'Asia/Tokyo','yyyyMMdd-HHmm');
   return `SIMS-Evidence-${site}-${stamp}.zip`;
 }
@@ -166,7 +191,7 @@ function sdscSaveDialogHtml_(o){
     .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.hint{font-size:12px;color:#5f6368;margin-top:6px}
     .selected{margin-top:8px;font-size:12px;color:#1a73e8}.msg{font-size:12px;color:#d93025;margin-top:8px}
   </style></head><body><div class="wrap">
-    <div class="title">${o.title}</div><div class="sub">対象サイト: ${o.siteUrl}</div>
+    <div class="title">${o.title}</div><div class="sub">サイト名: ${o.siteName}<br>対象サイト: ${o.siteUrl}</div>
     <label>保存先フォルダ</label><div class="picker"><div class="bar"><button id="up">↑ 上へ</button><div id="where" class="where"></div><button id="choose">このフォルダを選択</button></div><div id="folders" class="folders"></div></div>
     <div id="selected" class="selected"></div>
     <label>ファイル名</label><input id="filename" value=""><div class="hint">通常は自動生成された名前のままで構いません。</div>
@@ -791,6 +816,7 @@ function sdscWriteStatus_(run) {
   if (!sh) return;
   const rows = [
     ['バージョン', SDSC_VERSION],
+    ['サイト名', sdscGetConfig_().siteName || sdscSuggestedSiteName_(sdscGetConfig_().siteUrl) || ''],
     ['対象サイト', sdscGetConfig_().siteUrl || ''],
     ['実行ID', run.runId || ''],
     ['状態', sdscStatusLabel_(run.status)],
