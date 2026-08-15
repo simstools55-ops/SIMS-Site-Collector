@@ -1,3 +1,12 @@
+# v0.2.0-RC9
+
+- Renamed the visible status sheet to `収集状況` and localized user-facing fields.
+- Added a Windows-like Drive save dialog before collection starts.
+- Users can browse Drive folders, choose the destination, and edit the ZIP file name.
+- Removed Drive URL/folder-ID entry from normal setup flow.
+- Internal collection sheets remain hidden with stable internal names.
+- No Search Console collection or Evidence contract logic changes.
+
 # v0.2.0-RC8
 
 - Reorganized the menu around normal user workflow.

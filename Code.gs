@@ -1,5 +1,5 @@
 /**
- * SIMS Doctor Site Collector v0.2.0-RC7
+ * SIMS Site Collector v0.2.0-RC9
  * Single-Code distribution.
  * Functional baseline: v0.2.0-RC6.
  * Active RC6 runtime modules are consolidated into this file.
@@ -9,19 +9,19 @@
 // Core / Menu / Runner (source: Code.gs)
 // ============================================================================
 
-const SDSC_VERSION='0.2.0-RC8';
+const SDSC_VERSION='0.2.0-RC9';
 
 function onOpen(){
   sdscTidyUserSheets_();
   const ui=SpreadsheetApp.getUi();
   ui.createMenu('SIMS Site Collector')
     .addItem('1. 収集するサイトを選ぶ','sdscShowSetupDialog')
-    .addItem('2. 通常の診断データを収集（120日）','sdscStartStandardCollection')
+    .addItem('2. 通常の診断データを収集（120日）','sdscPrepareStandardCollection')
     .addItem('3. 収集状況を確認','sdscShowStatus')
     .addSeparator()
     .addSubMenu(
       ui.createMenu('追加の操作')
-        .addItem('詳しく収集する（180日）','sdscStartDetailedCollection')
+        .addItem('詳しく収集する（180日）','sdscPrepareDetailedCollection')
         .addItem('中断した収集を再開','sdscResumeCollection')
     )
     .addSubMenu(
@@ -39,7 +39,7 @@ function sdscShowSetupDialog(){
   const items=props.map((p,i)=>`${i+1}. ${p.siteUrl} [${p.permissionLevel}]`).join('\n');
   const ui=SpreadsheetApp.getUi();
   const prompt=ui.prompt(
-    `SIMS Doctor Site Collector v${SDSC_VERSION}`,
+    `SIMS Site Collector v${SDSC_VERSION}`,
     `収集するサイトの番号を入力してください。\n\n${items}\n\n現在: ${current.siteUrl||'(未設定)'}`,
     ui.ButtonSet.OK_CANCEL
   );
@@ -49,57 +49,143 @@ function sdscShowSetupDialog(){
     ui.alert('入力が正しくありません。');return;
   }
 
-  let currentFolderText=`(既定: ${SDSC_CONFIG.outputFolderName})`;
-  if(current.outputFolderId){
-    try{
-      const f=DriveApp.getFolderById(sdscResolveOutputFolderId_(current.outputFolderId));
-      currentFolderText=`${f.getName()}\n${f.getUrl()}`;
-    }catch(e){
-      currentFolderText='(設定済みフォルダーを開けません。再設定してください)';
-    }
-  }
-  const folderPrompt=ui.prompt(
-    'Evidence Package 保存先',
-    `Google Driveの保存先フォルダーURLまたはフォルダーIDを入力してください。\nWindowsのフォルダーパス（C:\\～）は使用できません。ブラウザ版Google Driveで保存先フォルダーを開き、そのURLを貼り付けてください。\n空欄なら既定フォルダー「${SDSC_CONFIG.outputFolderName}」を使用します。\n\n現在の保存先:\n${currentFolderText}`,
-    ui.ButtonSet.OK_CANCEL
-  );
-  if(folderPrompt.getSelectedButton()!==ui.Button.OK)return;
-
-  const folderInput=folderPrompt.getResponseText().trim();
-  let folderId='';
-  let folderName=SDSC_CONFIG.outputFolderName;
-  let folderUrl='';
-  if(folderInput){
-    folderId=sdscResolveOutputFolderId_(folderInput);
-    try{
-      const folder=DriveApp.getFolderById(folderId);
-      folderName=folder.getName();
-      folderUrl=folder.getUrl();
-    }catch(e){
-      ui.alert('保存先フォルダーを開けませんでした。\nブラウザ版Google DriveのフォルダーURLまたはフォルダーIDを確認してください。\nWindowsのフォルダーパス（C:\\～）は使用できません。');
-      return;
-    }
-  }
-
   sdscSaveConfig_({
     siteUrl:props[idx].siteUrl,
     permissionLevel:props[idx].permissionLevel,
     searchType:'web',
     timezone:Session.getScriptTimeZone()||'Asia/Tokyo',
-    outputFolderId:folderId
+    outputFolderId:current.outputFolderId||'',
+    outputFileName:current.outputFileName||''
   });
 
-  if(!folderInput){
-    const info=sdscGetOutputFolderInfo_({outputFolderId:''});
-    folderName=info.name;
-    folderUrl=info.url;
-  }
-  ui.alert(`設定しました。\n\nSite: ${props[idx].siteUrl}\n標準診断期間: 120日\nEvidence保存先: ${folderName}\n${folderUrl}`);
+  ui.alert(`設定しました。\n\n対象サイト: ${props[idx].siteUrl}\n標準収集期間: 120日\n\n保存先とファイル名は、収集を開始するときに選べます。`);
 }
+function sdscPrepareStandardCollection(){sdscShowSaveAndStartDialog_(SDSC_CONFIG.standardPeriodDays);}
+function sdscPrepareDetailedCollection(){sdscShowSaveAndStartDialog_(SDSC_CONFIG.detailPeriodDays);}
 function sdscStartStandardCollection(){sdscStartCollection_(SDSC_CONFIG.standardPeriodDays);}
 function sdscStartDetailedCollection(){sdscStartCollection_(SDSC_CONFIG.detailPeriodDays);}
 
-function sdscStartCollection_(days){
+function sdscShowSaveAndStartDialog_(days){
+  const config=sdscGetConfig_();
+  if(!config.siteUrl)throw new Error('先に「1. 収集するサイトを選ぶ」を実行してください。');
+  const defaultName=sdscDefaultEvidenceFileName_(config.siteUrl, config.timezone||'Asia/Tokyo');
+  const initialFolder=sdscPickerFolderInfo_(config.outputFolderId||'');
+  const title=days===SDSC_CONFIG.detailPeriodDays?'詳しく収集する（180日）':'通常の診断データを収集（120日）';
+  const html=HtmlService.createHtmlOutput(sdscSaveDialogHtml_({
+    days:days,
+    title:title,
+    siteUrl:config.siteUrl,
+    defaultFileName:config.outputFileName||defaultName,
+    initialFolderId:initialFolder.id,
+    initialFolderName:initialFolder.name
+  })).setWidth(620).setHeight(520);
+  SpreadsheetApp.getUi().showModalDialog(html,'Evidence Package の保存');
+}
+
+function sdscDefaultEvidenceFileName_(siteUrl,tz){
+  let site=String(siteUrl||'site')
+    .replace(/^sc-domain:/i,'')
+    .replace(/^https?:\/\//i,'')
+    .replace(/\/.*$/,'')
+    .replace(/[^a-zA-Z0-9._-]+/g,'-')
+    .replace(/^-+|-+$/g,'')||'site';
+  const stamp=Utilities.formatDate(new Date(),tz||'Asia/Tokyo','yyyyMMdd-HHmm');
+  return `SIMS-Evidence-${site}-${stamp}.zip`;
+}
+
+function sdscNormalizeZipName_(name){
+  let v=String(name||'').trim().replace(/[\\/:*?\"<>|]/g,'-');
+  if(!v)v='SIMS-Evidence.zip';
+  if(!/\.zip$/i.test(v))v+='.zip';
+  return v;
+}
+
+function sdscPickerFolderInfo_(folderId){
+  if(folderId){
+    try{
+      const f=DriveApp.getFolderById(folderId);
+      return {id:f.getId(),name:f.getName()};
+    }catch(e){}
+  }
+  const root=DriveApp.getRootFolder();
+  return {id:root.getId(),name:'マイドライブ'};
+}
+
+function sdscListDriveFolders(parentId){
+  let folder;
+  try{folder=parentId?DriveApp.getFolderById(parentId):DriveApp.getRootFolder();}
+  catch(e){folder=DriveApp.getRootFolder();}
+  const items=[];
+  const it=folder.getFolders();
+  let count=0;
+  while(it.hasNext()&&count<200){
+    const f=it.next();
+    items.push({id:f.getId(),name:f.getName()});
+    count++;
+  }
+  items.sort((a,b)=>a.name.localeCompare(b.name,'ja'));
+  let parent=null;
+  try{
+    const ps=folder.getParents();
+    if(ps.hasNext()){
+      const p=ps.next();
+      parent={id:p.getId(),name:p.getName()||'マイドライブ'};
+    }
+  }catch(e){}
+  return {id:folder.getId(),name:folder.getName()||'マイドライブ',parent:parent,folders:items,truncated:count>=200};
+}
+
+function sdscSaveCollectionSettingsAndStart(payload){
+  const config=sdscGetConfig_();
+  if(!config.siteUrl)throw new Error('対象サイトが設定されていません。');
+  const folderId=String(payload&&payload.folderId||'').trim();
+  const days=Number(payload&&payload.days||SDSC_CONFIG.standardPeriodDays);
+  const fileName=sdscNormalizeZipName_(payload&&payload.fileName);
+  let folder=DriveApp.getRootFolder();
+  if(folderId)folder=DriveApp.getFolderById(folderId);
+  config.outputFolderId=folder.getId();
+  config.outputFileName=fileName;
+  sdscSaveConfig_(config);
+  sdscStartCollection_(days,fileName,folder.getId());
+  return {ok:true,folderName:folder.getName()||'マイドライブ',fileName:fileName};
+}
+
+function sdscSaveDialogHtml_(o){
+  const data=JSON.stringify(o).replace(/</g,'\\u003c');
+  return `<!doctype html><html><head><base target="_top"><style>
+    body{font-family:Arial,'Noto Sans JP',sans-serif;margin:0;color:#202124;background:#fff}
+    .wrap{padding:20px}.title{font-size:18px;font-weight:700;margin-bottom:6px}
+    .sub{font-size:12px;color:#5f6368;margin-bottom:16px;word-break:break-all}
+    label{display:block;font-weight:700;font-size:13px;margin:14px 0 6px}
+    input{box-sizing:border-box;width:100%;padding:9px 10px;border:1px solid #dadce0;border-radius:6px;font-size:14px}
+    .picker{border:1px solid #dadce0;border-radius:8px;overflow:hidden}
+    .bar{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f8f9fa;border-bottom:1px solid #dadce0}
+    .where{font-weight:700;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .folders{height:220px;overflow:auto}.folder{padding:9px 12px;border-bottom:1px solid #f1f3f4;cursor:pointer}.folder:hover{background:#f8f9fa}
+    button{border:1px solid #dadce0;background:#fff;border-radius:6px;padding:7px 12px;cursor:pointer}.primary{background:#1a73e8;color:#fff;border-color:#1a73e8}
+    .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.hint{font-size:12px;color:#5f6368;margin-top:6px}
+    .selected{margin-top:8px;font-size:12px;color:#1a73e8}.msg{font-size:12px;color:#d93025;margin-top:8px}
+  </style></head><body><div class="wrap">
+    <div class="title">${o.title}</div><div class="sub">対象サイト: ${o.siteUrl}</div>
+    <label>保存先フォルダ</label><div class="picker"><div class="bar"><button id="up">↑ 上へ</button><div id="where" class="where"></div><button id="choose">このフォルダを選択</button></div><div id="folders" class="folders"></div></div>
+    <div id="selected" class="selected"></div>
+    <label>ファイル名</label><input id="filename" value=""><div class="hint">通常は自動生成された名前のままで構いません。</div>
+    <div id="msg" class="msg"></div><div class="actions"><button onclick="google.script.host.close()">キャンセル</button><button class="primary" id="start">保存して収集開始</button></div>
+  </div><script>
+    const opt=${data}; let current=null; let selected={id:opt.initialFolderId,name:opt.initialFolderName};
+    document.getElementById('filename').value=opt.defaultFileName;
+    function esc(s){return String(s||'').replace(/[&<>\"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c]));}
+    function load(id){document.getElementById('folders').innerHTML='<div class="folder">読み込み中...</div>';google.script.run.withSuccessHandler(render).withFailureHandler(err=>showErr(err.message)).sdscListDriveFolders(id);}
+    function render(d){current=d;document.getElementById('where').textContent=d.name;document.getElementById('up').disabled=!d.parent;const box=document.getElementById('folders');box.innerHTML=d.folders.length?'':'<div class="folder">サブフォルダはありません</div>';d.folders.forEach(f=>{const el=document.createElement('div');el.className='folder';el.textContent='📁 '+f.name;el.onclick=()=>load(f.id);box.appendChild(el);});if(d.truncated){const x=document.createElement('div');x.className='folder';x.textContent='※ 200件まで表示しています';box.appendChild(x);}}
+    document.getElementById('up').onclick=()=>{if(current&&current.parent)load(current.parent.id)};
+    document.getElementById('choose').onclick=()=>{if(!current)return;selected={id:current.id,name:current.name};document.getElementById('selected').textContent='保存先: '+selected.name;};
+    document.getElementById('start').onclick=()=>{const fn=document.getElementById('filename').value.trim();if(!fn){showErr('ファイル名を入力してください。');return;}const b=document.getElementById('start');b.disabled=true;b.textContent='開始しています...';google.script.run.withSuccessHandler(()=>google.script.host.close()).withFailureHandler(err=>{b.disabled=false;b.textContent='保存して収集開始';showErr(err.message)}).sdscSaveCollectionSettingsAndStart({folderId:selected.id,fileName:fn,days:opt.days});};
+    function showErr(m){document.getElementById('msg').textContent=m||'エラーが発生しました。'}
+    document.getElementById('selected').textContent='保存先: '+selected.name; load(opt.initialFolderId);
+  </script></body></html>`;
+}
+
+function sdscStartCollection_(days,fileName,folderId){
   const config=sdscGetConfig_();
   if(!config.siteUrl)throw new Error('先に「1. 収集するサイトを選ぶ」を実行してください。');
   if(!sdscDeleteLegacyRawSheetsWithConfirmation_())return;
@@ -114,7 +200,9 @@ function sdscStartCollection_(days){
     updatedAt:new Date().toISOString(),
     period:sdscResolvePeriod_(days),
     cursors:{},rows:{},warnings:[],errors:[],
-    progressText:'収集を開始します'
+    progressText:'収集を開始します',
+    outputFileName:sdscNormalizeZipName_(fileName||config.outputFileName||sdscDefaultEvidenceFileName_(config.siteUrl,config.timezone||'Asia/Tokyo')),
+    requestedOutputFolderId:String(folderId||config.outputFolderId||'')
   };
   sdscSaveRun_(run);
   sdscPrepareCompactSheets_();
@@ -222,10 +310,10 @@ function sdscRepairStep5AndRebuild(){
 
 function sdscShowStatus(){
   const run=sdscGetRun_();
-  if(!run){SpreadsheetApp.getUi().alert(`SIMS Doctor Site Collector v${SDSC_VERSION}\nRunはありません。`);return;}
+  if(!run){SpreadsheetApp.getUi().alert(`SIMS Site Collector v${SDSC_VERSION}\nRunはありません。`);return;}
   sdscWriteStatus_(run);
   SpreadsheetApp.getUi().alert(
-    `SIMS Doctor Site Collector v${SDSC_VERSION}\n\n`+
+    `SIMS Site Collector v${SDSC_VERSION}\n\n`+
     `Site: ${sdscGetConfig_().siteUrl||''}\nRun: ${run.runId}\nStatus: ${run.status}\n`+
     `Step: ${run.status==='COMPLETED' ? '6/6' : `${Math.min(run.step,6)}/6`}\n期間: ${run.period.days}日\n\n${run.progressText||''}\n\n`+
     `Output: ${run.outputFileUrl||'(未生成)'}\n`+
@@ -270,7 +358,7 @@ const SDSC_CONFIG = Object.freeze({
   runPropertyKey: 'SDSC_RUN_V2',
   outputFolderName: 'SIMS-Doctor-Site-Collector',
   sheets: {
-    status: '_SDSC_STATUS',
+    status: '収集状況',
     siteDaily: '_SDSC_SITE_DAILY',
     pagePeriod: '_SDSC_PAGE_PERIOD',
     pageWeekly: '_SDSC_PAGE_WEEKLY',
@@ -591,12 +679,16 @@ function sdscSitemapSeeds_(siteUrl) {
 function sdscTidyUserSheets(){
   sdscTidyUserSheets_();
   SpreadsheetApp.getUi().alert(
-    'シートを整理しました。\n\n利用者が通常確認するのは「_SDSC_STATUS」だけです。\n収集用の内部シートは非表示にしました。'
+    'シートを整理しました。\n\n利用者が通常確認するのは「収集状況」シートだけです。\n収集用の内部シートは非表示にしました。'
   );
 }
 
 function sdscTidyUserSheets_(){
   const ss=SpreadsheetApp.getActive();
+  const legacyStatus=ss.getSheetByName('_SDSC_STATUS');
+  if(legacyStatus&&!ss.getSheetByName(SDSC_CONFIG.sheets.status)){
+    try{legacyStatus.setName(SDSC_CONFIG.sheets.status);}catch(e){}
+  }
   const internalNames=[
     SDSC_CONFIG.sheets.siteDaily,
     SDSC_CONFIG.sheets.pagePeriod,
@@ -689,22 +781,28 @@ function sdscDeleteLegacyRawSheetsWithConfirmation_() {
   existing.forEach(sh => ss.deleteSheet(sh));
   return true;
 }
+function sdscStatusLabel_(status){
+  const map={RUNNING:'収集中',PAUSED_AUTO_RESUME:'自動再開待ち',COMPLETED:'完了',ERROR:'エラー'};
+  return map[String(status||'')]||String(status||'未開始');
+}
+
 function sdscWriteStatus_(run) {
   const sh = SpreadsheetApp.getActive().getSheetByName(SDSC_CONFIG.sheets.status);
   if (!sh) return;
   const rows = [
-    ['Version', SDSC_VERSION],
-    ['Site', sdscGetConfig_().siteUrl || ''],
-    ['Run', run.runId || ''],
-    ['Status', run.status || ''],
-    ['Step', `${run.step || 0}/6`],
-    ['Period', `${run.period ? run.period.days : ''} days`],
-    ['Progress', run.progressText || ''],
-    ['Output', run.outputFileUrl || ''],
-    ['Last error', (run.errors && run.errors.length) ? run.errors[run.errors.length-1].message : '']
+    ['バージョン', SDSC_VERSION],
+    ['対象サイト', sdscGetConfig_().siteUrl || ''],
+    ['実行ID', run.runId || ''],
+    ['状態', sdscStatusLabel_(run.status)],
+    ['進行ステップ', `${Math.min(Number(run.step||0),6)}/6`],
+    ['収集期間', `${run.period ? run.period.days : ''}日`],
+    ['進捗', run.progressText || ''],
+    ['Evidence Package', run.outputFileUrl || '(未生成)'],
+    ['保存先', run.outputFolderName || ''],
+    ['最新エラー', (run.errors && run.errors.length) ? run.errors[run.errors.length-1].message : 'なし']
   ];
   sh.clearContents();
-  sh.getRange(1,1,1,2).setValues([['item','value']]);
+  sh.getRange(1,1,1,2).setValues([['項目','内容']]);
   sh.getRange(2,1,rows.length,2).setValues(rows);
   sh.autoResizeColumns(1,2);
 }
@@ -993,8 +1091,8 @@ function sdscFinalizeEvidence_(run) {
   files.push(Utilities.newBlob(JSON.stringify(manifest,null,2),'application/json','manifest.json'));
   files.push(Utilities.newBlob(sdscReadmeText_(),'text/plain','README-FIRST.md'));
 
-  const zipName=`SIMS-Doctor-Site-Evidence-${Utilities.formatDate(new Date(),config.timezone||'Asia/Tokyo','yyyyMMdd')}.zip`;
-  const folderInfo=sdscGetOutputFolderInfo_(config);
+  const zipName=sdscNormalizeZipName_(run.outputFileName||config.outputFileName||sdscDefaultEvidenceFileName_(config.siteUrl,config.timezone||'Asia/Tokyo'));
+  const folderInfo=sdscGetOutputFolderInfo_({outputFolderId:run.requestedOutputFolderId||config.outputFolderId||''});
   const file=folderInfo.folder.createFile(Utilities.zip(files,zipName));
   run.outputFileId=file.getId();
   run.outputFileUrl=file.getUrl();
