@@ -1,5 +1,5 @@
 /**
- * SIMS Site Collector v0.2.0-RC9
+ * SIMS Site Collector v0.2.0-RC10.1
  * Single-Code distribution.
  * Functional baseline: v0.2.0-RC6.
  * Active RC6 runtime modules are consolidated into this file.
@@ -9,7 +9,7 @@
 // Core / Menu / Runner (source: Code.gs)
 // ============================================================================
 
-const SDSC_VERSION='0.2.0-RC10';
+const SDSC_VERSION='0.2.0-RC10.1';
 
 function onOpen(){
   sdscTidyUserSheets_();
@@ -17,12 +17,12 @@ function onOpen(){
   ui.createMenu('SIMS Site Collector')
     .addItem('1. 収集するサイトを選ぶ','sdscShowSetupDialog')
     .addItem('2. 通常の診断データを収集（120日）','sdscPrepareStandardCollection')
-    .addItem('3. 収集状況を確認','sdscShowStatus')
     .addSeparator()
     .addSubMenu(
       ui.createMenu('追加の操作')
         .addItem('詳しく収集する（180日）','sdscPrepareDetailedCollection')
         .addItem('中断した収集を再開','sdscResumeCollection')
+        .addItem('収集状況を確認','sdscShowStatus')
     )
     .addSubMenu(
       ui.createMenu('保守・トラブル対応')
@@ -340,7 +340,7 @@ function sdscResumeCollection(){
     run.errors=run.errors||[];
     run.errors.push({at:new Date().toISOString(),message:String(e&&e.stack?e.stack:e)});
     run.status='ERROR';
-    run.progressText='エラーが発生しました。「3. 収集状況を確認」で内容を確認してください。';
+    run.progressText='エラーが発生しました。「追加の操作 → 収集状況を確認」で内容を確認してください。';
     sdscSaveRun_(run);
     sdscWriteStatus_(run);
     throw e;
@@ -408,6 +408,15 @@ function sdscEstimateProgressPercent_(run){
   return Math.max(2,Math.min(98,Math.round(pct)));
 }
 
+function sdscResolveRunOutputFileName_(run){
+  if(!run)return '';
+  if(run.outputFileName)return String(run.outputFileName);
+  if(run.outputFileId){
+    try{return DriveApp.getFileById(run.outputFileId).getName()||'';}catch(e){}
+  }
+  return '';
+}
+
 function sdscGetRunProgressForUi(){
   const run=sdscGetRun_();
   const config=sdscGetConfig_();
@@ -422,7 +431,7 @@ function sdscGetRunProgressForUi(){
     progressText:run.progressText||'',
     startedAt:sdscFormatDateTime_(run.startedAt),
     completedAt:sdscFormatDateTime_(run.completedAt),
-    outputFileName:run.outputFileName||'',
+    outputFileName:sdscResolveRunOutputFileName_(run),
     outputFileUrl:run.outputFileUrl||'',
     outputFolderName:run.outputFolderName||'',
     siteName:config.siteName||sdscSuggestedSiteName_(config.siteUrl),
@@ -437,7 +446,7 @@ function sdscShowStatus(){
 収集履歴はありません。`);return;}
   sdscWriteStatus_(run);
   const html=HtmlService.createHtmlOutput(sdscProgressDialogHtml_()).setWidth(560).setHeight(440);
-  SpreadsheetApp.getUi().showModelessDialog(html,'SIMS Site Collector｜収集状況');
+  SpreadsheetApp.getUi().showModalDialog(html,'SIMS Site Collector｜収集状況');
 }
 
 function sdscProgressDialogHtml_(){
@@ -928,7 +937,7 @@ function sdscWriteStatus_(run) {
     ['進捗', run.progressText || ''],
     ['開始日時', sdscFormatDateTime_(run.startedAt)],
     ['完了日時', sdscFormatDateTime_(run.completedAt) || (run.status==='COMPLETED'?'完了時刻を確認中':'-')],
-    ['パッケージ名', run.outputFileName || '(未生成)'],
+    ['パッケージ名', sdscResolveRunOutputFileName_(run) || '(未生成)'],
     ['Evidence Package', run.outputFileUrl || '(未生成)'],
     ['保存先', run.outputFolderName || ''],
     ['最新エラー', (run.errors && run.errors.length) ? run.errors[run.errors.length-1].message : 'なし']
@@ -1239,6 +1248,7 @@ function sdscFinalizeEvidence_(run) {
   const zipName=sdscNormalizeZipName_(run.outputFileName||config.outputFileName||sdscDefaultEvidenceFileName_(config.siteName,config.siteUrl,config.timezone||'Asia/Tokyo'));
   const folderInfo=sdscGetOutputFolderInfo_({outputFolderId:run.requestedOutputFolderId||config.outputFolderId||''});
   const file=folderInfo.folder.createFile(Utilities.zip(files,zipName));
+  run.outputFileName=zipName;
   run.outputFileId=file.getId();
   run.outputFileUrl=file.getUrl();
   run.outputFolderId=folderInfo.id;

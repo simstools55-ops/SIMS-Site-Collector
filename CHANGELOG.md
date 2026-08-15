@@ -1,3 +1,12 @@
+# v0.2.0-RC10.1
+
+- Reduced top-level menu to two normal actions.
+- Moved `収集状況を確認` into `追加の操作`.
+- Replaced modeless manual status dialog with a modal dialog to avoid UI permission errors.
+- Persist the actual generated Evidence Package filename.
+- Recover the filename from Drive for older completed runs when possible.
+- Aligned source header/version comments to RC10.1.
+
 # v0.2.0-RC10
 
 - Added a live collection progress dialog with automatic polling.
