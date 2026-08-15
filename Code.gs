@@ -9,7 +9,7 @@
 // Core / Menu / Runner (source: Code.gs)
 // ============================================================================
 
-const SDSC_VERSION='0.2.0-RC9.1';
+const SDSC_VERSION='0.2.0-RC10';
 
 function onOpen(){
   sdscTidyUserSheets_();
@@ -171,8 +171,15 @@ function sdscSaveCollectionSettingsAndStart(payload){
   config.outputFolderId=folder.getId();
   config.outputFileName=fileName;
   sdscSaveConfig_(config);
-  sdscStartCollection_(days,fileName,folder.getId());
-  return {ok:true,folderName:folder.getName()||'マイドライブ',fileName:fileName};
+  const initialized=sdscStartCollection_(days,fileName,folder.getId(),true);
+  if(!initialized)return {ok:false,cancelled:true};
+  return {
+    ok:true,
+    folderName:folder.getName()||'マイドライブ',
+    fileName:fileName,
+    siteName:config.siteName||sdscSuggestedSiteName_(config.siteUrl),
+    siteUrl:config.siteUrl
+  };
 }
 
 function sdscSaveDialogHtml_(o){
@@ -190,6 +197,7 @@ function sdscSaveDialogHtml_(o){
     button{border:1px solid #dadce0;background:#fff;border-radius:6px;padding:7px 12px;cursor:pointer}.primary{background:#1a73e8;color:#fff;border-color:#1a73e8}
     .actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}.hint{font-size:12px;color:#5f6368;margin-top:6px}
     .selected{margin-top:8px;font-size:12px;color:#1a73e8}.msg{font-size:12px;color:#d93025;margin-top:8px}
+    .progressCard{padding:6px}.brand{font-size:12px;font-weight:700;color:#1967d2;letter-spacing:.4px}.progressTitle{font-size:22px;font-weight:700;margin:8px 0 6px;color:#202124}.progressSite{padding:12px 14px;background:#eef4ff;border-radius:8px;font-weight:700;color:#174ea6;margin:12px 0}.progressSite span{font-size:12px;font-weight:400;color:#5f6368}.statusPill{display:inline-block;padding:5px 10px;border-radius:999px;background:#e8f0fe;color:#174ea6;font-size:12px;font-weight:700}.statusPill.completed{background:#e6f4ea;color:#137333}.statusPill.error{background:#fce8e6;color:#c5221f}.statusPill.paused_auto_resume{background:#fef7e0;color:#b06000}.progressBar{height:12px;background:#e8eaed;border-radius:999px;overflow:hidden;margin:16px 0 8px}.progressBar>div{height:100%;width:0;background:#1a73e8;transition:width .3s}.stepText{font-size:13px;font-weight:700;margin-bottom:16px}.progressGrid{display:grid;grid-template-columns:95px 1fr;gap:8px 12px;padding:14px;background:#f8f9fa;border-radius:8px;font-size:12px}.progressGrid>div:nth-child(odd){font-weight:700;color:#5f6368}.progressGrid>div:nth-child(even){word-break:break-all}
   </style></head><body><div class="wrap">
     <div class="title">${o.title}</div><div class="sub">サイト名: ${o.siteName}<br>対象サイト: ${o.siteUrl}</div>
     <label>保存先フォルダ</label><div class="picker"><div class="bar"><button id="up">↑ 上へ</button><div id="where" class="where"></div><button id="choose">このフォルダを選択</button></div><div id="folders" class="folders"></div></div>
@@ -204,16 +212,65 @@ function sdscSaveDialogHtml_(o){
     function render(d){current=d;document.getElementById('where').textContent=d.name;document.getElementById('up').disabled=!d.parent;const box=document.getElementById('folders');box.innerHTML=d.folders.length?'':'<div class="folder">サブフォルダはありません</div>';d.folders.forEach(f=>{const el=document.createElement('div');el.className='folder';el.textContent='📁 '+f.name;el.onclick=()=>load(f.id);box.appendChild(el);});if(d.truncated){const x=document.createElement('div');x.className='folder';x.textContent='※ 200件まで表示しています';box.appendChild(x);}}
     document.getElementById('up').onclick=()=>{if(current&&current.parent)load(current.parent.id)};
     document.getElementById('choose').onclick=()=>{if(!current)return;selected={id:current.id,name:current.name};document.getElementById('selected').textContent='保存先: '+selected.name;};
-    document.getElementById('start').onclick=()=>{const fn=document.getElementById('filename').value.trim();if(!fn){showErr('ファイル名を入力してください。');return;}const b=document.getElementById('start');b.disabled=true;b.textContent='開始しています...';google.script.run.withSuccessHandler(()=>google.script.host.close()).withFailureHandler(err=>{b.disabled=false;b.textContent='保存して収集開始';showErr(err.message)}).sdscSaveCollectionSettingsAndStart({folderId:selected.id,fileName:fn,days:opt.days});};
+    document.getElementById('start').onclick=()=>{
+      const fn=document.getElementById('filename').value.trim();
+      if(!fn){showErr('ファイル名を入力してください。');return;}
+      const b=document.getElementById('start');b.disabled=true;b.textContent='準備しています...';
+      google.script.run.withSuccessHandler(r=>{
+        if(!r||!r.ok){b.disabled=false;b.textContent='保存して収集開始';return;}
+        showProgressScreen(r);
+        google.script.run.withFailureHandler(err=>showProgressError(err.message)).sdscResumeCollection();
+        pollProgress();
+      }).withFailureHandler(err=>{b.disabled=false;b.textContent='保存して収集開始';showErr(err.message)}).sdscSaveCollectionSettingsAndStart({folderId:selected.id,fileName:fn,days:opt.days});
+    };
+    function showProgressScreen(r){
+      document.querySelector('.wrap').innerHTML='<div class="progressCard">'+
+        '<div class="brand">SIMS Site Collector</div>'+ 
+        '<div class="progressTitle">診断データを収集しています</div>'+ 
+        '<div class="progressSite">'+esc(r.siteName||'')+'<br><span>'+esc(r.siteUrl||'')+'</span></div>'+ 
+        '<div class="statusPill" id="pstatus">準備中</div>'+ 
+        '<div class="progressBar"><div id="pbar"></div></div>'+ 
+        '<div class="stepText" id="pstep">収集を開始しています...</div>'+ 
+        '<div class="progressGrid">'+
+          '<div>開始日時</div><div id="pstart">-</div>'+ 
+          '<div>完了日時</div><div id="pend">-</div>'+ 
+          '<div>ファイル名</div><div id="pfile">'+esc(r.fileName||'')+'</div>'+ 
+          '<div>保存先</div><div id="pfolder">'+esc(r.folderName||'')+'</div>'+ 
+        '</div>'+ 
+        '<div id="perror" class="msg"></div>'+ 
+        '<div class="actions"><button id="closeProgress" onclick="google.script.host.close()">閉じる</button></div>'+ 
+      '</div>';
+    }
+    function pollProgress(){
+      google.script.run.withSuccessHandler(d=>{
+        if(!d)return;
+        updateProgress(d);
+        if(d.status!=='COMPLETED'&&d.status!=='ERROR')setTimeout(pollProgress,3000);
+      }).withFailureHandler(err=>{showProgressError(err.message);setTimeout(pollProgress,5000)}).sdscGetRunProgressForUi();
+    }
+    function updateProgress(d){
+      const pill=document.getElementById('pstatus'); if(!pill)return;
+      pill.textContent=d.statusLabel||d.status||''; pill.className='statusPill '+String(d.status||'').toLowerCase();
+      document.getElementById('pbar').style.width=(d.progressPercent||0)+'%';
+      document.getElementById('pstep').textContent=(d.stepLabel||'')+(d.progressText?' — '+d.progressText:'');
+      document.getElementById('pstart').textContent=d.startedAt||'-';
+      document.getElementById('pend').textContent=d.completedAt||'-';
+      document.getElementById('pfile').textContent=d.outputFileName||document.getElementById('pfile').textContent;
+      document.getElementById('pfolder').textContent=d.outputFolderName||document.getElementById('pfolder').textContent;
+      if(d.error)document.getElementById('perror').textContent=d.error;
+      if(d.status==='COMPLETED')document.querySelector('.progressTitle').textContent='収集が完了しました';
+      if(d.status==='ERROR')document.querySelector('.progressTitle').textContent='収集中にエラーが発生しました';
+    }
+    function showProgressError(m){const e=document.getElementById('perror');if(e)e.textContent=m||'進捗を取得できませんでした。';}
     function showErr(m){document.getElementById('msg').textContent=m||'エラーが発生しました。'}
     document.getElementById('selected').textContent='保存先: '+selected.name; load(opt.initialFolderId);
   </script></body></html>`;
 }
 
-function sdscStartCollection_(days,fileName,folderId){
+function sdscStartCollection_(days,fileName,folderId,deferResume){
   const config=sdscGetConfig_();
   if(!config.siteUrl)throw new Error('先に「1. 収集するサイトを選ぶ」を実行してください。');
-  if(!sdscDeleteLegacyRawSheetsWithConfirmation_())return;
+  if(!sdscDeleteLegacyRawSheetsWithConfirmation_())return false;
   sdscClearResumeTrigger_();
   const run={
     format:'SIMS_DOCTOR_SITE_COLLECTOR_RUN_V2',
@@ -226,13 +283,14 @@ function sdscStartCollection_(days,fileName,folderId){
     period:sdscResolvePeriod_(days),
     cursors:{},rows:{},warnings:[],errors:[],
     progressText:'収集を開始します',
-    outputFileName:sdscNormalizeZipName_(fileName||config.outputFileName||sdscDefaultEvidenceFileName_(config.siteUrl,config.timezone||'Asia/Tokyo')),
+    outputFileName:sdscNormalizeZipName_(fileName||config.outputFileName||sdscDefaultEvidenceFileName_(config.siteName,config.siteUrl,config.timezone||'Asia/Tokyo')),
     requestedOutputFolderId:String(folderId||config.outputFolderId||'')
   };
   sdscSaveRun_(run);
   sdscPrepareCompactSheets_();
   sdscWriteStatus_(run);
-  sdscResumeCollection();
+  if(!deferResume)sdscResumeCollection();
+  return true;
 }
 
 function sdscResumeCollection(){
@@ -333,18 +391,63 @@ function sdscRepairStep5AndRebuild(){
   sdscResumeCollection();
 }
 
+function sdscFormatDateTime_(iso){
+  if(!iso)return '';
+  try{return Utilities.formatDate(new Date(iso),Session.getScriptTimeZone()||'Asia/Tokyo','yyyy/MM/dd HH:mm:ss');}
+  catch(e){return String(iso||'');}
+}
+
+function sdscEstimateProgressPercent_(run){
+  if(!run)return 0;
+  if(run.status==='COMPLETED')return 100;
+  const step=Math.max(1,Math.min(Number(run.step||1),6));
+  let within=0;
+  if(step===1&&run.period&&run.period.days){within=Math.min(1,Number((run.cursors||{}).siteDaily||0)/Number(run.period.days));}
+  else if(step===5&&run.pageQueryTargetUrls&&run.pageQueryTargetUrls.length){within=Math.min(1,Number((run.cursors||{}).pageQueryTop||0)/run.pageQueryTargetUrls.length);}
+  const pct=((step-1)+within)/6*100;
+  return Math.max(2,Math.min(98,Math.round(pct)));
+}
+
+function sdscGetRunProgressForUi(){
+  const run=sdscGetRun_();
+  const config=sdscGetConfig_();
+  if(!run)return {status:'NONE',statusLabel:'未開始',progressPercent:0};
+  const step=Math.min(Number(run.step||0),6);
+  return {
+    status:run.status||'',
+    statusLabel:sdscStatusLabel_(run.status),
+    progressPercent:sdscEstimateProgressPercent_(run),
+    step:step,
+    stepLabel:run.status==='COMPLETED'?'6/6 完了':`${step}/6`,
+    progressText:run.progressText||'',
+    startedAt:sdscFormatDateTime_(run.startedAt),
+    completedAt:sdscFormatDateTime_(run.completedAt),
+    outputFileName:run.outputFileName||'',
+    outputFileUrl:run.outputFileUrl||'',
+    outputFolderName:run.outputFolderName||'',
+    siteName:config.siteName||sdscSuggestedSiteName_(config.siteUrl),
+    siteUrl:config.siteUrl||'',
+    error:(run.errors&&run.errors.length)?run.errors[run.errors.length-1].message:''
+  };
+}
+
 function sdscShowStatus(){
   const run=sdscGetRun_();
-  if(!run){SpreadsheetApp.getUi().alert(`SIMS Site Collector v${SDSC_VERSION}\nRunはありません。`);return;}
+  if(!run){SpreadsheetApp.getUi().alert(`SIMS Site Collector v${SDSC_VERSION}
+収集履歴はありません。`);return;}
   sdscWriteStatus_(run);
-  SpreadsheetApp.getUi().alert(
-    `SIMS Site Collector v${SDSC_VERSION}\n\n`+
-    `Site: ${sdscGetConfig_().siteUrl||''}\nRun: ${run.runId}\nStatus: ${run.status}\n`+
-    `Step: ${run.status==='COMPLETED' ? '6/6' : `${Math.min(run.step,6)}/6`}\n期間: ${run.period.days}日\n\n${run.progressText||''}\n\n`+
-    `Output: ${run.outputFileUrl||'(未生成)'}\n`+
-    `保存先: ${run.outputFolderUrl||sdscSafeConfiguredOutputFolderUrl_()}\n`+
-    `Last error: ${(run.errors&&run.errors.length)?run.errors[run.errors.length-1].message:'(なし)'}`
-  );
+  const html=HtmlService.createHtmlOutput(sdscProgressDialogHtml_()).setWidth(560).setHeight(440);
+  SpreadsheetApp.getUi().showModelessDialog(html,'SIMS Site Collector｜収集状況');
+}
+
+function sdscProgressDialogHtml_(){
+  return `<!doctype html><html><head><base target="_top"><style>
+  body{font-family:Arial,'Noto Sans JP',sans-serif;margin:0;background:#f7f9fc;color:#202124}.wrap{padding:22px}.brand{font-size:12px;font-weight:700;color:#1967d2}.title{font-size:22px;font-weight:700;margin:7px 0 14px}.card{background:#fff;border:1px solid #e0e5ee;border-radius:12px;padding:18px;box-shadow:0 1px 2px rgba(0,0,0,.04)}.pill{display:inline-block;padding:5px 10px;border-radius:999px;background:#e8f0fe;color:#174ea6;font-size:12px;font-weight:700}.pill.completed{background:#e6f4ea;color:#137333}.pill.error{background:#fce8e6;color:#c5221f}.pill.paused_auto_resume{background:#fef7e0;color:#b06000}.bar{height:12px;background:#e8eaed;border-radius:999px;overflow:hidden;margin:15px 0 8px}.bar>div{height:100%;background:#1a73e8;width:0;transition:width .3s}.step{font-size:13px;font-weight:700;margin-bottom:16px}.grid{display:grid;grid-template-columns:95px 1fr;gap:8px 12px;background:#f8f9fa;border-radius:8px;padding:14px;font-size:12px}.grid>div:nth-child(odd){font-weight:700;color:#5f6368}.grid>div:nth-child(even){word-break:break-all}.err{color:#c5221f;font-size:12px;margin-top:12px}.actions{text-align:right;margin-top:14px}button{padding:7px 14px;border:1px solid #dadce0;background:#fff;border-radius:6px;cursor:pointer}
+  </style></head><body><div class="wrap"><div class="brand">SIMS SITE COLLECTOR</div><div class="title" id="title">収集状況</div><div class="card"><div id="status" class="pill">確認中</div><div class="bar"><div id="bar"></div></div><div id="step" class="step"></div><div class="grid"><div>サイト名</div><div id="site"></div><div>開始日時</div><div id="start"></div><div>完了日時</div><div id="end"></div><div>ファイル名</div><div id="file"></div><div>保存先</div><div id="folder"></div></div><div id="err" class="err"></div><div class="actions"><button onclick="google.script.host.close()">閉じる</button></div></div></div><script>
+  function poll(){google.script.run.withSuccessHandler(d=>{update(d);if(d.status!=='COMPLETED'&&d.status!=='ERROR')setTimeout(poll,3000)}).withFailureHandler(()=>setTimeout(poll,5000)).sdscGetRunProgressForUi()}
+  function update(d){document.getElementById('status').textContent=d.statusLabel||'';document.getElementById('status').className='pill '+String(d.status||'').toLowerCase();document.getElementById('bar').style.width=(d.progressPercent||0)+'%';document.getElementById('step').textContent=(d.stepLabel||'')+(d.progressText?' — '+d.progressText:'');document.getElementById('site').textContent=d.siteName||d.siteUrl||'';document.getElementById('start').textContent=d.startedAt||'-';document.getElementById('end').textContent=d.completedAt||'-';document.getElementById('file').textContent=d.outputFileName||'-';document.getElementById('folder').textContent=d.outputFolderName||'-';document.getElementById('err').textContent=d.error||'';if(d.status==='COMPLETED')document.getElementById('title').textContent='収集が完了しました';}
+  poll();
+  </script></body></html>`;
 }
 
 function sdscSafeConfiguredOutputFolderUrl_(){
@@ -814,23 +917,39 @@ function sdscStatusLabel_(status){
 function sdscWriteStatus_(run) {
   const sh = SpreadsheetApp.getActive().getSheetByName(SDSC_CONFIG.sheets.status);
   if (!sh) return;
+  const config=sdscGetConfig_();
   const rows = [
     ['バージョン', SDSC_VERSION],
-    ['サイト名', sdscGetConfig_().siteName || sdscSuggestedSiteName_(sdscGetConfig_().siteUrl) || ''],
-    ['対象サイト', sdscGetConfig_().siteUrl || ''],
-    ['実行ID', run.runId || ''],
+    ['サイト名', config.siteName || sdscSuggestedSiteName_(config.siteUrl) || ''],
+    ['対象サイト', config.siteUrl || ''],
     ['状態', sdscStatusLabel_(run.status)],
-    ['進行ステップ', `${Math.min(Number(run.step||0),6)}/6`],
+    ['進行ステップ', run.status==='COMPLETED'?'6/6':`${Math.min(Number(run.step||0),6)}/6`],
     ['収集期間', `${run.period ? run.period.days : ''}日`],
     ['進捗', run.progressText || ''],
+    ['開始日時', sdscFormatDateTime_(run.startedAt)],
+    ['完了日時', sdscFormatDateTime_(run.completedAt) || (run.status==='COMPLETED'?'完了時刻を確認中':'-')],
+    ['パッケージ名', run.outputFileName || '(未生成)'],
     ['Evidence Package', run.outputFileUrl || '(未生成)'],
     ['保存先', run.outputFolderName || ''],
     ['最新エラー', (run.errors && run.errors.length) ? run.errors[run.errors.length-1].message : 'なし']
   ];
-  sh.clearContents();
-  sh.getRange(1,1,1,2).setValues([['項目','内容']]);
-  sh.getRange(2,1,rows.length,2).setValues(rows);
-  sh.autoResizeColumns(1,2);
+  sh.clear();
+  sh.getRange(1,1,1,2).setValues([['SIMS Site Collector','収集状況']]);
+  sh.getRange(2,1,1,2).setValues([['項目','内容']]);
+  sh.getRange(3,1,rows.length,2).setValues(rows);
+  sh.setFrozenRows(2);
+  sh.setColumnWidth(1,140);
+  sh.setColumnWidth(2,520);
+  sh.getRange(1,1,1,2).merge().setValue('SIMS Site Collector｜収集状況').setFontWeight('bold').setFontSize(16).setBackground('#174ea6').setFontColor('#ffffff').setHorizontalAlignment('left');
+  sh.getRange(2,1,1,2).setFontWeight('bold').setBackground('#dbe8ff').setFontColor('#174ea6');
+  sh.getRange(3,1,rows.length,1).setFontWeight('bold').setBackground('#f3f6fb').setFontColor('#4a5568');
+  sh.getRange(3,2,rows.length,1).setWrap(true).setVerticalAlignment('top');
+  const statusCell=sh.getRange(6,2); // row 3 + status index 3
+  if(run.status==='COMPLETED')statusCell.setBackground('#e6f4ea').setFontColor('#137333').setFontWeight('bold');
+  else if(run.status==='ERROR')statusCell.setBackground('#fce8e6').setFontColor('#c5221f').setFontWeight('bold');
+  else if(run.status==='PAUSED_AUTO_RESUME')statusCell.setBackground('#fef7e0').setFontColor('#b06000').setFontWeight('bold');
+  else statusCell.setBackground('#e8f0fe').setFontColor('#174ea6').setFontWeight('bold');
+  sh.getRange(1,1,rows.length+2,2).setBorder(true,true,true,true,true,true,'#d9e2f1',SpreadsheetApp.BorderStyle.SOLID);
 }
 function sdscReadData_(sheetName) {
   const sh = SpreadsheetApp.getActive().getSheetByName(sheetName);
@@ -1098,7 +1217,7 @@ function sdscFinalizeEvidence_(run) {
     collectorVersion:SDSC_VERSION,
     generatedAt:new Date().toISOString(),
     timezone:config.timezone||'Asia/Tokyo',
-    site:{siteUrl:config.siteUrl,searchConsoleProperty:config.siteUrl},
+    site:{siteName:config.siteName||sdscSuggestedSiteName_(config.siteUrl),siteUrl:config.siteUrl,searchConsoleProperty:config.siteUrl},
     period:run.period,
     searchType:'web',
     storageMode:'COMPACT_EVIDENCE',
@@ -1117,7 +1236,7 @@ function sdscFinalizeEvidence_(run) {
   files.push(Utilities.newBlob(JSON.stringify(manifest,null,2),'application/json','manifest.json'));
   files.push(Utilities.newBlob(sdscReadmeText_(),'text/plain','README-FIRST.md'));
 
-  const zipName=sdscNormalizeZipName_(run.outputFileName||config.outputFileName||sdscDefaultEvidenceFileName_(config.siteUrl,config.timezone||'Asia/Tokyo'));
+  const zipName=sdscNormalizeZipName_(run.outputFileName||config.outputFileName||sdscDefaultEvidenceFileName_(config.siteName,config.siteUrl,config.timezone||'Asia/Tokyo'));
   const folderInfo=sdscGetOutputFolderInfo_({outputFolderId:run.requestedOutputFolderId||config.outputFolderId||''});
   const file=folderInfo.folder.createFile(Utilities.zip(files,zipName));
   run.outputFileId=file.getId();
@@ -1128,7 +1247,7 @@ function sdscFinalizeEvidence_(run) {
   run.status='COMPLETED';
   run.step=7;
   run.completedAt=new Date().toISOString();
-  run.progressText=`Evidence Package生成完了\n保存先: ${folderInfo.name}`;
+  run.progressText=`Evidence Package生成完了：${zipName}`;
   run.errors=[];
   sdscSaveRun_(run);
   sdscWriteStatus_(run);

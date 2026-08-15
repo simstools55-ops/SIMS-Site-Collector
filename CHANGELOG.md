@@ -1,3 +1,13 @@
+# v0.2.0-RC10
+
+- Added a live collection progress dialog with automatic polling.
+- Progress remains visible through staged/auto-resume collection runs.
+- Shows start time, completion time, current step, package filename and destination.
+- Added completion datetime to the user-facing `収集状況` sheet.
+- Restyled the status sheet with product-like Japanese UI formatting.
+- Evidence package default filenames continue to use site name + collection date/time.
+- Added siteName to Evidence manifest metadata.
+
 # v0.2.0-RC9.1
 
 - Evidence Package filename now always includes a friendly site name and collection date/time.
