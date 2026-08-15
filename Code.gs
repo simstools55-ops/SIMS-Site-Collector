@@ -1,5 +1,5 @@
 /**
- * SIMS Site Collector v0.2.0-RC10.1
+ * SIMS Site Collector v0.2.0-RC10.2
  * Single-Code distribution.
  * Functional baseline: v0.2.0-RC6.
  * Active RC6 runtime modules are consolidated into this file.
@@ -9,7 +9,7 @@
 // Core / Menu / Runner (source: Code.gs)
 // ============================================================================
 
-const SDSC_VERSION='0.2.0-RC10.1';
+const SDSC_VERSION='0.2.0-RC10.2';
 
 function onOpen(){
   sdscTidyUserSheets_();
@@ -66,7 +66,7 @@ function sdscShowSetupDialog(){
     searchType:'web',
     timezone:Session.getScriptTimeZone()||'Asia/Tokyo',
     outputFolderId:current.outputFolderId||'',
-    outputFileName:current.outputFileName||''
+    outputFileName:''
   });
 
   ui.alert(`設定しました。\n\nサイト名: ${siteName}\n対象サイト: ${selectedSiteUrl}\n標準収集期間: 120日\n\nEvidence Packageは「サイト名＋収集日時」が分かる名前で自動生成されます。`);
@@ -112,10 +112,20 @@ function sdscSafeFilePart_(value,fallback){
   return v||fallback||'site';
 }
 
-function sdscDefaultEvidenceFileName_(siteName,siteUrl,tz){
+function sdscDefaultEvidenceFileName_(siteName,siteUrl,tz,at){
   const site=sdscSafeFilePart_(siteName||sdscSuggestedSiteName_(siteUrl),'site');
-  const stamp=Utilities.formatDate(new Date(),tz||'Asia/Tokyo','yyyyMMdd-HHmm');
+  const dt=at?new Date(at):new Date();
+  const stamp=Utilities.formatDate(dt,tz||'Asia/Tokyo','yyyyMMdd-HHmm');
   return `SIMS-Evidence-${site}-${stamp}.zip`;
+}
+
+function sdscCanonicalEvidenceFileName_(config,startedAt){
+  return sdscDefaultEvidenceFileName_(
+    config.siteName,
+    config.siteUrl,
+    config.timezone||'Asia/Tokyo',
+    startedAt||new Date().toISOString()
+  );
 }
 
 function sdscNormalizeZipName_(name){
@@ -165,18 +175,19 @@ function sdscSaveCollectionSettingsAndStart(payload){
   if(!config.siteUrl)throw new Error('対象サイトが設定されていません。');
   const folderId=String(payload&&payload.folderId||'').trim();
   const days=Number(payload&&payload.days||SDSC_CONFIG.standardPeriodDays);
-  const fileName=sdscNormalizeZipName_(payload&&payload.fileName);
+  const requestedFileName=sdscNormalizeZipName_(payload&&payload.fileName);
   let folder=DriveApp.getRootFolder();
   if(folderId)folder=DriveApp.getFolderById(folderId);
   config.outputFolderId=folder.getId();
-  config.outputFileName=fileName;
+  config.outputFileName='';
   sdscSaveConfig_(config);
-  const initialized=sdscStartCollection_(days,fileName,folder.getId(),true);
+  const initialized=sdscStartCollection_(days,'',folder.getId(),true);
   if(!initialized)return {ok:false,cancelled:true};
   return {
     ok:true,
     folderName:folder.getName()||'マイドライブ',
-    fileName:fileName,
+    fileName:sdscResolveRunOutputFileName_(sdscGetRun_()),
+    requestedFileName:requestedFileName,
     siteName:config.siteName||sdscSuggestedSiteName_(config.siteUrl),
     siteUrl:config.siteUrl
   };
@@ -202,7 +213,7 @@ function sdscSaveDialogHtml_(o){
     <div class="title">${o.title}</div><div class="sub">サイト名: ${o.siteName}<br>対象サイト: ${o.siteUrl}</div>
     <label>保存先フォルダ</label><div class="picker"><div class="bar"><button id="up">↑ 上へ</button><div id="where" class="where"></div><button id="choose">このフォルダを選択</button></div><div id="folders" class="folders"></div></div>
     <div id="selected" class="selected"></div>
-    <label>ファイル名</label><input id="filename" value=""><div class="hint">通常は自動生成された名前のままで構いません。</div>
+    <label>ファイル名</label><input id="filename" value="" readonly><div class="hint">サイト名と収集日時を含む名前で自動保存します。</div>
     <div id="msg" class="msg"></div><div class="actions"><button onclick="google.script.host.close()">キャンセル</button><button class="primary" id="start">保存して収集開始</button></div>
   </div><script>
     const opt=${data}; let current=null; let selected={id:opt.initialFolderId,name:opt.initialFolderName};
@@ -272,18 +283,19 @@ function sdscStartCollection_(days,fileName,folderId,deferResume){
   if(!config.siteUrl)throw new Error('先に「1. 収集するサイトを選ぶ」を実行してください。');
   if(!sdscDeleteLegacyRawSheetsWithConfirmation_())return false;
   sdscClearResumeTrigger_();
+  const startedAt=new Date().toISOString();
   const run={
     format:'SIMS_DOCTOR_SITE_COLLECTOR_RUN_V2',
     collectorVersion:SDSC_VERSION,
-    runId:`SITE-${Utilities.formatDate(new Date(),config.timezone||'Asia/Tokyo','yyyyMMdd-HHmmss')}`,
+    runId:`SITE-${Utilities.formatDate(new Date(startedAt),config.timezone||'Asia/Tokyo','yyyyMMdd-HHmmss')}`,
     status:'RUNNING',
     step:1,
-    startedAt:new Date().toISOString(),
-    updatedAt:new Date().toISOString(),
+    startedAt:startedAt,
+    updatedAt:startedAt,
     period:sdscResolvePeriod_(days),
     cursors:{},rows:{},warnings:[],errors:[],
     progressText:'収集を開始します',
-    outputFileName:sdscNormalizeZipName_(fileName||config.outputFileName||sdscDefaultEvidenceFileName_(config.siteName,config.siteUrl,config.timezone||'Asia/Tokyo')),
+    outputFileName:sdscCanonicalEvidenceFileName_(config,startedAt),
     requestedOutputFolderId:String(folderId||config.outputFolderId||'')
   };
   sdscSaveRun_(run);
@@ -442,21 +454,17 @@ function sdscGetRunProgressForUi(){
 
 function sdscShowStatus(){
   const run=sdscGetRun_();
-  if(!run){SpreadsheetApp.getUi().alert(`SIMS Site Collector v${SDSC_VERSION}
-収集履歴はありません。`);return;}
+  if(!run){
+    const ui=SpreadsheetApp.getUi();
+    ui.alert(`SIMS Site Collector v${SDSC_VERSION}\n収集履歴はありません。`);
+    return;
+  }
   sdscWriteStatus_(run);
-  const html=HtmlService.createHtmlOutput(sdscProgressDialogHtml_()).setWidth(560).setHeight(440);
-  SpreadsheetApp.getUi().showModalDialog(html,'SIMS Site Collector｜収集状況');
-}
-
-function sdscProgressDialogHtml_(){
-  return `<!doctype html><html><head><base target="_top"><style>
-  body{font-family:Arial,'Noto Sans JP',sans-serif;margin:0;background:#f7f9fc;color:#202124}.wrap{padding:22px}.brand{font-size:12px;font-weight:700;color:#1967d2}.title{font-size:22px;font-weight:700;margin:7px 0 14px}.card{background:#fff;border:1px solid #e0e5ee;border-radius:12px;padding:18px;box-shadow:0 1px 2px rgba(0,0,0,.04)}.pill{display:inline-block;padding:5px 10px;border-radius:999px;background:#e8f0fe;color:#174ea6;font-size:12px;font-weight:700}.pill.completed{background:#e6f4ea;color:#137333}.pill.error{background:#fce8e6;color:#c5221f}.pill.paused_auto_resume{background:#fef7e0;color:#b06000}.bar{height:12px;background:#e8eaed;border-radius:999px;overflow:hidden;margin:15px 0 8px}.bar>div{height:100%;background:#1a73e8;width:0;transition:width .3s}.step{font-size:13px;font-weight:700;margin-bottom:16px}.grid{display:grid;grid-template-columns:95px 1fr;gap:8px 12px;background:#f8f9fa;border-radius:8px;padding:14px;font-size:12px}.grid>div:nth-child(odd){font-weight:700;color:#5f6368}.grid>div:nth-child(even){word-break:break-all}.err{color:#c5221f;font-size:12px;margin-top:12px}.actions{text-align:right;margin-top:14px}button{padding:7px 14px;border:1px solid #dadce0;background:#fff;border-radius:6px;cursor:pointer}
-  </style></head><body><div class="wrap"><div class="brand">SIMS SITE COLLECTOR</div><div class="title" id="title">収集状況</div><div class="card"><div id="status" class="pill">確認中</div><div class="bar"><div id="bar"></div></div><div id="step" class="step"></div><div class="grid"><div>サイト名</div><div id="site"></div><div>開始日時</div><div id="start"></div><div>完了日時</div><div id="end"></div><div>ファイル名</div><div id="file"></div><div>保存先</div><div id="folder"></div></div><div id="err" class="err"></div><div class="actions"><button onclick="google.script.host.close()">閉じる</button></div></div></div><script>
-  function poll(){google.script.run.withSuccessHandler(d=>{update(d);if(d.status!=='COMPLETED'&&d.status!=='ERROR')setTimeout(poll,3000)}).withFailureHandler(()=>setTimeout(poll,5000)).sdscGetRunProgressForUi()}
-  function update(d){document.getElementById('status').textContent=d.statusLabel||'';document.getElementById('status').className='pill '+String(d.status||'').toLowerCase();document.getElementById('bar').style.width=(d.progressPercent||0)+'%';document.getElementById('step').textContent=(d.stepLabel||'')+(d.progressText?' — '+d.progressText:'');document.getElementById('site').textContent=d.siteName||d.siteUrl||'';document.getElementById('start').textContent=d.startedAt||'-';document.getElementById('end').textContent=d.completedAt||'-';document.getElementById('file').textContent=d.outputFileName||'-';document.getElementById('folder').textContent=d.outputFolderName||'-';document.getElementById('err').textContent=d.error||'';if(d.status==='COMPLETED')document.getElementById('title').textContent='収集が完了しました';}
-  poll();
-  </script></body></html>`;
+  const sh=SpreadsheetApp.getActive().getSheetByName(SDSC_CONFIG.sheets.status);
+  if(sh){
+    try{sh.showSheet();}catch(e){}
+    SpreadsheetApp.getActive().setActiveSheet(sh);
+  }
 }
 
 function sdscSafeConfiguredOutputFolderUrl_(){
@@ -1245,7 +1253,7 @@ function sdscFinalizeEvidence_(run) {
   files.push(Utilities.newBlob(JSON.stringify(manifest,null,2),'application/json','manifest.json'));
   files.push(Utilities.newBlob(sdscReadmeText_(),'text/plain','README-FIRST.md'));
 
-  const zipName=sdscNormalizeZipName_(run.outputFileName||config.outputFileName||sdscDefaultEvidenceFileName_(config.siteName,config.siteUrl,config.timezone||'Asia/Tokyo'));
+  const zipName=sdscNormalizeZipName_(run.outputFileName||sdscCanonicalEvidenceFileName_(config,run.startedAt));
   const folderInfo=sdscGetOutputFolderInfo_({outputFolderId:run.requestedOutputFolderId||config.outputFolderId||''});
   const file=folderInfo.folder.createFile(Utilities.zip(files,zipName));
   run.outputFileName=zipName;

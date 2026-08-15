@@ -1,3 +1,12 @@
+# v0.2.0-RC10.2
+
+- Removed dialog opening from `収集状況を確認`; it now refreshes and opens the status sheet.
+- Progress during collection remains inside the explicitly opened collection/save UI.
+- Every new run now enforces the Evidence Package name `SIMS-Evidence-{site name}-{yyyyMMdd-HHmm}.zip`.
+- Legacy/custom `outputFileName` values are no longer inherited by new runs.
+- The generated filename is fixed at run start and reused through automatic resumes.
+- Updated product version/header to RC10.2.
+
 # v0.2.0-RC10.1
 
 - Reduced top-level menu to two normal actions.
