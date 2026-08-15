@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.0-RC7 - Single Code Distribution
+- Consolidated the active RC6 Apps Script runtime into one `Code.gs`.
+- Removed legacy v0.1 runtime modules from the distribution path.
+- No intended collector feature or evidence-contract changes.
+- `appsscript.json` remains unchanged from RC6.
+
 ## 0.2.0-RC6 - Evidence Storage UX
 - Added optional Google Drive Evidence output folder configuration during Setup.
 - Accepts either a Google Drive folder URL or folder ID.

@@ -1,26 +1,22 @@
-# SIMS Doctor Site Collector v0.2.0-RC6
+# SIMS Doctor Site Collector v0.2.0-RC7
 
-Large-Site Compact Evidence architecture.
+## Purpose
+This release changes the Apps Script distribution structure only.
+The active v0.2.0-RC6 runtime modules are consolidated into a single `Code.gs`.
 
-## Main change
-v0.1.x stored pageDaily/queryDaily raw rows in Google Sheets. Large sites can exceed the workbook 10,000,000-cell limit.
+## Apps Script files
+- `Code.gs` - replace
+- `appsscript.json` - unchanged from RC6
 
-v0.2.0-RC6 does not store those huge raw datasets. It collects:
-- site_daily.csv
-- page_summary.csv
-- page_weekly.csv
-- query_summary.csv
-- page_query_top.csv
+## Removed from Apps Script project
+The old modular `.gs` files are no longer required after applying RC7.
+Do not keep both the old modular files and the new single `Code.gs`, because duplicate function definitions would remain.
 
-Standard diagnosis is 120 days. Detailed collection remains available at 180 days.
+## Functional baseline
+- Collector behavior: RC6 baseline
+- Evidence output-folder UX: retained
+- Hatena active URL repair: retained
+- Compact collection flow: retained
 
-## Important migration note
-Do not resume a v0.1.x run with v0.2.0-RC6.
-Start a new run. At start, the tool asks permission to delete legacy raw evidence sheets so the workbook can recover cell capacity.
-
-## RC2 optimization
-Step 5 now normalizes observed GSC URLs and narrows page-level query collection using sitemap/robots.txt discovery. If sitemap discovery is not usable, a conservative Hatena/WordPress article-URL heuristic is used.
-
-
-## RC6 Evidence storage UX
-Setup now allows an optional Google Drive folder URL or folder ID for Evidence Package output. Leave it blank to keep using the default `SIMS-Doctor-Site-Collector` folder. The resolved destination is shown in Setup confirmation and Show Status.
+## Apply
+See `RC7-APPLY.md`.
