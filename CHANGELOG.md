@@ -1,3 +1,10 @@
+# v0.2.0-RC10.3
+
+- Added required Apps Script UI OAuth scope:
+  `https://www.googleapis.com/auth/script.container.ui`
+- Fixes authorization failures when opening the Evidence Package save dialog.
+- No collection logic changes from RC10.2.
+
 # v0.2.0-RC10.2
 
 - Removed dialog opening from `収集状況を確認`; it now refreshes and opens the status sheet.

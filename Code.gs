@@ -1,5 +1,5 @@
 /**
- * SIMS Site Collector v0.2.0-RC10.2
+ * SIMS Site Collector v0.2.0-RC10.3
  * Single-Code distribution.
  * Functional baseline: v0.2.0-RC6.
  * Active RC6 runtime modules are consolidated into this file.
@@ -9,7 +9,7 @@
 // Core / Menu / Runner (source: Code.gs)
 // ============================================================================
 
-const SDSC_VERSION='0.2.0-RC10.2';
+const SDSC_VERSION='0.2.0-RC10.3';
 
 function onOpen(){
   sdscTidyUserSheets_();
