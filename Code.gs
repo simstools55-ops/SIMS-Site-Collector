@@ -1,15 +1,15 @@
 /**
- * SIMS Site Collector v0.2.0
+ * SIMS Site Collector v0.2.1
  * Single-Code distribution.
- * Functional baseline: v0.2.0-RC6.
- * Active RC6 runtime modules are consolidated into this file.
+ * Production baseline: v0.2.1.
+ * Runtime modules are consolidated into this file.
  */
 
 // ============================================================================
 // Core / Menu / Runner (source: Code.gs)
 // ============================================================================
 
-const SDSC_VERSION='0.2.0';
+const SDSC_VERSION='0.2.1';
 
 function onOpen(){
   sdscTidyUserSheets_();
@@ -936,7 +936,7 @@ function sdscWriteStatus_(run) {
   if (!sh) return;
   const config=sdscGetConfig_();
   const rows = [
-    ['バージョン', SDSC_VERSION],
+    ['Collectorバージョン', SDSC_VERSION],
     ['サイト名', config.siteName || sdscSuggestedSiteName_(config.siteUrl) || ''],
     ['対象サイト', config.siteUrl || ''],
     ['状態', sdscStatusLabel_(run.status)],
@@ -945,6 +945,7 @@ function sdscWriteStatus_(run) {
     ['進捗', run.progressText || ''],
     ['開始日時', sdscFormatDateTime_(run.startedAt)],
     ['完了日時', sdscFormatDateTime_(run.completedAt) || (run.status==='COMPLETED'?'完了時刻を確認中':'-')],
+    ['収集時バージョン', String(run.collectorVersion || '(記録なし)')],
     ['パッケージ名', sdscResolveRunOutputFileName_(run) || '(未生成)'],
     ['Evidence Package', run.outputFileUrl || '(未生成)'],
     ['保存先', run.outputFolderName || ''],

@@ -1,10 +1,11 @@
-# v0.2.0
+# v0.2.1
 
-- First production baseline after RC10.3 validation.
-- No Search Console collection, Evidence contract, staged-runner, or storage logic changes from RC10.3.
-- Finalized product version as `0.2.0`.
-- Updated `README-FIRST.md` to match the current save workflow and OAuth scopes.
-- RC1 through RC10.3 history remains below as development and validation history.
+- Changed the status-sheet label from `バージョン` to `Collectorバージョン`.
+- Added `収集時バージョン` near the collection result metadata.
+- Current product version is read from `SDSC_VERSION`.
+- Collection-time version is read from the existing `run.collectorVersion` captured at run start.
+- Updated the single-code header to remove obsolete RC6 wording.
+- No Search Console collection logic, Evidence contract, staged runner, Drive storage, or Diagnosis handoff changes.
 
 # v0.2.0-RC10.3
 

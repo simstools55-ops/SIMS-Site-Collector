@@ -1,11 +1,19 @@
-# SIMS Site Collector v0.2.0
+# SIMS Site Collector v0.2.1
 
-SIMS Site Collector v0.2.0 は、RC10.3までの実運用検証を反映した正式ベースラインです。
+SIMS Site Collector v0.2.1 は、RC10.3までの実運用検証を基礎にした正式運用版です。
 Search Consoleの診断用Evidenceを収集し、SIMS Doctor Site Diagnosisへ渡すZIPを生成します。
+
+## v0.2.1 の変更
+「収集状況」シートのバージョン表示を分かりやすくしました。
+
+- `Collectorバージョン`：現在実行しているスクリプトのバージョン
+- `収集時バージョン`：画面に表示しているEvidenceを収集した時点のCollectorバージョン
+
+過去にRC版で収集したデータを表示している場合でも、現在のスクリプト版と収集時の版を混同しません。
 
 ## Apps Scriptへの反映
 - 置換: `Code.gs`
-- 置換: `appsscript.json`（既にRC10.3を適用済みなら内容変更はありません）
+- `appsscript.json`：変更なし
 - `VERSION` はリポジトリ管理用で、Apps Script側に作成する必要はありません
 
 ## 通常の使い方
@@ -25,12 +33,16 @@ Evidence ZIP名は新しい収集開始時に、
 `SIMS-Evidence-{サイト名}-{yyyyMMdd-HHmm}.zip`
 の形式で自動生成されます。
 
-## シート
+## 収集状況シート
 通常利用で確認する主なシートは `収集状況` です。
-収集処理用の内部シートは通常は非表示にしています。
+
+`Collectorバージョン` は現在の `SDSC_VERSION` を表示します。
+`収集時バージョン` は収集開始時にRunへ保存された `collectorVersion` を表示します。
+
+このため、Collectorを更新したあとでも、既存Evidenceがどの版で収集されたものか追跡できます。
 
 ## OAuth権限
-v0.2.0では、現行機能に必要な以下のOAuth scopeを使用します。
+現行機能に必要な以下のOAuth scopeを使用します。
 
 - `https://www.googleapis.com/auth/spreadsheets.currentonly`
 - `https://www.googleapis.com/auth/drive`
@@ -39,9 +51,5 @@ v0.2.0では、現行機能に必要な以下のOAuth scopeを使用します。
 - `https://www.googleapis.com/auth/script.scriptapp`
 - `https://www.googleapis.com/auth/script.container.ui`
 
-Drive scopeは、保存先フォルダーの参照とEvidence ZIP作成・保存に使用します。
-`script.container.ui` はEvidence Package保存ダイアログの表示に使用します。
-
-## 正式版について
-v0.2.0はRC10.3の収集ロジックを変更せず正式化したものです。
-RC1〜RC10.3の開発・検証履歴は `CHANGELOG.md` および各RC/AUDIT資料に残しています。
+## 互換性
+v0.2.1ではSearch Console収集ロジック、Evidence Package契約、Diagnosisとの受け渡し仕様は変更していません。
