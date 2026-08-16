@@ -1,3 +1,11 @@
+# v0.2.0
+
+- First production baseline after RC10.3 validation.
+- No Search Console collection, Evidence contract, staged-runner, or storage logic changes from RC10.3.
+- Finalized product version as `0.2.0`.
+- Updated `README-FIRST.md` to match the current save workflow and OAuth scopes.
+- RC1 through RC10.3 history remains below as development and validation history.
+
 # v0.2.0-RC10.3
 
 - Added required Apps Script UI OAuth scope:
